@@ -273,9 +273,9 @@ function buildEmailPayload(digestPayload, oppsWithApprovals, parentId) {
     parentIssueIdentifier: digestPayload.parentIssueIdentifier,
     parentIssueUrl: digestPayload.parentIssueUrl,
     idempotencyKey: `opportunity-digest:${parentId}`,
-    from: process.env.WORKFLOW_EMAIL_FROM,
+    from: process.env.PAPERCLIP_OUTBOUND_EMAIL,
     to: process.env.WORKFLOW_EMAIL_TO,
-    replyTo: process.env.WORKFLOW_EMAIL_REPLY_TO,
+    replyTo: process.env.PAPERCLIP_OUTBOUND_EMAIL,
     cards: oppsWithApprovals.map((o) => ({
       id: String(o.rank),
       title: o.name,

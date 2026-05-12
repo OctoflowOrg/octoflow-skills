@@ -168,15 +168,11 @@ function buildEmailPayload(reviewPackage, optionsWithApprovals, parentId) {
     summary: reviewPackage.summary,
     parentIssueIdentifier: reviewPackage.parentIssueIdentifier,
     idempotencyKey: `linkedin-review:${parentId}`,
-    from:
-      process.env.LINKEDIN_REVIEW_EMAIL_FROM ??
-      process.env.WORKFLOW_EMAIL_FROM,
+    from: process.env.PAPERCLIP_OUTBOUND_EMAIL,
     to:
       process.env.LINKEDIN_REVIEW_EMAIL_TO ??
       process.env.WORKFLOW_EMAIL_TO,
-    replyTo:
-      process.env.LINKEDIN_REVIEW_EMAIL_REPLY_TO ??
-      process.env.WORKFLOW_EMAIL_REPLY_TO,
+    replyTo: process.env.PAPERCLIP_OUTBOUND_EMAIL,
     cards: optionsWithApprovals.map((o) => ({
       id: o.id,
       title: o.title,

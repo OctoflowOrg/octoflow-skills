@@ -85,11 +85,11 @@ and the calling agent posts a short blocker comment on the parent
   email-approvals sidecar uses to verify tokens.
 - `EMAIL_APPROVAL_PUBLIC_URL` — sidecar's public base URL (e.g.
   `https://agents.octosync.dev/email-approval`).
-- `LINKEDIN_REVIEW_EMAIL_FROM` / `LINKEDIN_REVIEW_EMAIL_TO` /
-  `LINKEDIN_REVIEW_EMAIL_REPLY_TO` (or `WORKFLOW_EMAIL_*` fallbacks) —
-  CMO sender/recipient routing.
-- `WORKFLOW_EMAIL_FROM` / `WORKFLOW_EMAIL_TO` /
-  `WORKFLOW_EMAIL_REPLY_TO` — CSO sender/recipient routing.
+- `PAPERCLIP_OUTBOUND_EMAIL` — single canonical From: and Reply-To: for
+  every workflow email (LinkedIn review + opportunity digest). Domain
+  must be verified in Resend.
+- `LINKEDIN_REVIEW_EMAIL_TO` — CMO review-email recipient(s).
+- `WORKFLOW_EMAIL_TO` — CSO digest recipient(s).
 - `PAPERCLIP_PUBLIC_URL` / `PAPERCLIP_COMPANY_ROUTE_KEY` — used to
   derive `parentIssueUrl` if not provided explicitly.
 
