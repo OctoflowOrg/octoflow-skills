@@ -1,0 +1,3 @@
+interface:
+  display_name: "OctoSync Coordination Rules"
+  short_description: "Workflow ownership, handoff, and voice rules"

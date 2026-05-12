@@ -1,0 +1,3 @@
+interface:
+  display_name: "OctoSync Approval Emails"
+  short_description: "Workflow emails with HMAC approval buttons"
