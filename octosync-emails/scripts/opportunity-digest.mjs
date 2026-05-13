@@ -38,7 +38,12 @@ function usage() {
 }
 
 function blocker(message, exitCode = 2) {
-  process.stderr.write(`BLOCKER: ${message}\n`);
+  // Write to BOTH stderr and stdout so agent runners that only capture
+  // stdout still see the failure reason. Stderr is the canonical channel;
+  // the stdout mirror is defensive.
+  const line = `BLOCKER: ${message}\n`;
+  process.stderr.write(line);
+  process.stdout.write(line);
   process.exit(exitCode);
 }
 
@@ -103,17 +108,20 @@ function slugify(name) {
 }
 
 async function readDigest(filePath) {
+  // Tolerate a leading "@" (curl convention some agents reach for) so a
+  // hallucinated `--digest @/tmp/foo.json` doesn't faceplant.
+  const resolvedPath = filePath.startsWith("@") ? filePath.slice(1) : filePath;
   let raw;
   try {
-    raw = await readFile(filePath, "utf8");
+    raw = await readFile(resolvedPath, "utf8");
   } catch (err) {
-    blocker(`cannot read digest file at ${filePath}: ${err.message}`);
+    blocker(`cannot read digest file at ${resolvedPath}: ${err.message}`);
   }
   let parsed;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    blocker(`digest file at ${filePath} is not valid JSON`);
+    blocker(`digest file at ${resolvedPath} is not valid JSON`);
   }
   validateDigest(parsed);
   return parsed;

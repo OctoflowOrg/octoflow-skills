@@ -49,26 +49,35 @@ directly — the orchestrators spawn them internally.
 
 ## Invocation pattern
 
-The agent passes a JSON payload path on the command line; the
+The agent passes a JSON payload **file path** on the command line; the
 orchestrator script reads, validates, and runs to completion.
 
+Skill mount paths are adapter-dependent — `claude_local` materialises
+under `~/.claude/skills/octosync-emails--<hash>/`, `codex_local` uses a
+global skills directory. Discover the helper dynamically rather than
+hard-coding either:
+
 ```sh
-INSTRUCTIONS_DIR="$PAPERCLIP_HOME/instances/$PAPERCLIP_INSTANCE_ID/companies/$PAPERCLIP_COMPANY_ID/agents/$PAPERCLIP_AGENT_ID/instructions"
-# CMO:
-node "$INSTRUCTIONS_DIR/octosync-emails/scripts/linkedin-finalize-batch.mjs" \
+# CMO — LinkedIn finalize-batch:
+HELPER=$(find / -name linkedin-finalize-batch.mjs \
+  -path "*octosync-emails*" 2>/dev/null | head -1)
+node "$HELPER" \
   --parent-id "<parentIssueId>" \
   --cmo-agent-id "$PAPERCLIP_AGENT_ID" \
-  --review-package @review-package.json
-# CSO:
-node "$INSTRUCTIONS_DIR/octosync-emails/scripts/opportunity-digest.mjs" \
+  --review-package /tmp/review-package.json
+
+# CSO — opportunity digest:
+HELPER=$(find / -name opportunity-digest.mjs \
+  -path "*octosync-emails*" 2>/dev/null | head -1)
+node "$HELPER" \
   --parent-id "<parentIssueId>" \
   --cso-agent-id "$PAPERCLIP_AGENT_ID" \
-  --digest @digest-payload.json
+  --digest /tmp/digest-payload.json
 ```
 
-The exact mount path depends on the adapter. The convention above
-matches what `claude_local` exposes today; if it changes, update this
-section.
+Path-flag values are plain filesystem paths — **no `@` prefix**. (The
+scripts will tolerate a leading `@` if one slips in, but the canonical
+form omits it.)
 
 ## Exit semantics
 

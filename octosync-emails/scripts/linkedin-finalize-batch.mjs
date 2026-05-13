@@ -40,7 +40,12 @@ function usage() {
 }
 
 function blocker(message, exitCode = 2) {
-  process.stderr.write(`BLOCKER: ${message}\n`);
+  // Write to BOTH stderr and stdout so agent runners that only capture
+  // stdout still see the failure reason. Stderr is the canonical channel;
+  // the stdout mirror is defensive.
+  const line = `BLOCKER: ${message}\n`;
+  process.stderr.write(line);
+  process.stdout.write(line);
   process.exit(exitCode);
 }
 
@@ -97,17 +102,20 @@ function describeError(resp) {
 }
 
 async function readReviewPackage(filePath) {
+  // Tolerate a leading "@" (curl convention some agents reach for) so a
+  // hallucinated `--review-package @/tmp/foo.json` doesn't faceplant.
+  const resolvedPath = filePath.startsWith("@") ? filePath.slice(1) : filePath;
   let raw;
   try {
-    raw = await readFile(filePath, "utf8");
+    raw = await readFile(resolvedPath, "utf8");
   } catch (err) {
-    blocker(`cannot read review-package file at ${filePath}: ${err.message}`);
+    blocker(`cannot read review-package file at ${resolvedPath}: ${err.message}`);
   }
   let parsed;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    blocker(`review-package file at ${filePath} is not valid JSON`);
+    blocker(`review-package file at ${resolvedPath} is not valid JSON`);
   }
   validateReviewPackage(parsed);
   return parsed;
