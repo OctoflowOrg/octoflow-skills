@@ -5,6 +5,10 @@
 // opportunity-digest.mjs delegate to this script via spawn (or import
 // renderApprovalEmail / sendApprovalEmail directly).
 //
+// HTML rendering is delegated to the React Email bundle at
+// ../templates/dist/render.mjs. Run `npm install && npm run build` in
+// the templates directory after editing the .tsx sources.
+//
 // Payload shape (passed as JSON path on argv[2] when invoked as CLI):
 //
 // {
@@ -37,9 +41,29 @@
 // }
 
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+
 import { signApprovalUrl } from "./sign-approval-link.mjs";
 
 const RESEND_URL = "https://api.resend.com/emails";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEMPLATE_BUNDLE_PATH = resolve(__dirname, "../templates/dist/render.mjs");
+
+let renderApprovalEmailHtmlCache = null;
+async function loadHtmlRenderer() {
+  if (!renderApprovalEmailHtmlCache) {
+    const mod = await import(TEMPLATE_BUNDLE_PATH);
+    if (typeof mod.renderApprovalEmailHtml !== "function") {
+      throw new Error(
+        `renderApprovalEmailHtml not found in ${TEMPLATE_BUNDLE_PATH}. Did you run 'npm install && npm run build' in templates/?`,
+      );
+    }
+    renderApprovalEmailHtmlCache = mod.renderApprovalEmailHtml;
+  }
+  return renderApprovalEmailHtmlCache;
+}
 
 // ---------- helpers ----------
 
@@ -93,15 +117,6 @@ function parseRecipientList(value, field) {
   }
 
   return single;
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }
 
 function deriveParentIssueUrl(explicitUrl, issueIdentifier) {
@@ -199,77 +214,6 @@ function normalizeCard(card, index, { signingKey, approvalBaseUrl }) {
   };
 }
 
-// ---------- HTML rendering ----------
-
-// OctoSync brand palette (canonical — see references/brand-shell.md)
-const BRAND_TEAL = "#2d6065";
-const BRAND_TEAL_DARK = "#234d52";
-const BRAND_ORANGE = "#d97543";
-const BRAND_CREAM = "#e8d8b8";
-const TEXT_BODY = "#1f2937";
-const TEXT_MUTED = "#6b7280";
-const CARD_BORDER = "#e5e7eb";
-const PAGE_BG = "#fafaf7";
-const APPROVE_BG = "#0d8857";
-const REJECT_BG = "#9b2c2c";
-const LINK = BRAND_TEAL_DARK;
-
-function renderCardHtml(card) {
-  const buttonsHtml =
-    card.approveUrl && card.rejectUrl
-      ? `
-            <div style="margin-top:16px;padding-top:14px;border-top:1px solid ${CARD_BORDER};">
-              <a href="${escapeHtml(card.approveUrl)}" style="display:inline-block;margin-right:8px;padding:9px 16px;border-radius:6px;background:${APPROVE_BG};color:#ffffff;font-weight:600;font-size:14px;text-decoration:none;">${escapeHtml(card.approveLabel)}</a>
-              <a href="${escapeHtml(card.rejectUrl)}" style="display:inline-block;padding:9px 16px;border-radius:6px;background:${REJECT_BG};color:#ffffff;font-weight:600;font-size:14px;text-decoration:none;">${escapeHtml(card.rejectLabel)}</a>
-            </div>`
-      : "";
-
-  const detailsHtml =
-    card.details.length > 0
-      ? `<div style="margin:0 0 12px;font-size:14px;color:${TEXT_BODY};line-height:1.7;">
-              ${card.details
-                .map(
-                  (d) =>
-                    `<div><strong style="color:${BRAND_TEAL_DARK};">${escapeHtml(d.label)}:</strong> ${escapeHtml(d.value)}</div>`,
-                )
-                .join("")}
-            </div>`
-      : "";
-
-  const bodyHtml = card.body
-    ? `<p style="margin:0 0 12px;color:${TEXT_BODY};line-height:1.65;white-space:pre-wrap;font-size:15px;">${escapeHtml(card.body)}</p>`
-    : "";
-
-  const rationaleHtml = card.rationale
-    ? `<p style="margin:0 0 12px;color:${TEXT_BODY};font-size:14px;"><strong style="color:${BRAND_TEAL_DARK};">Rationale:</strong> ${escapeHtml(card.rationale)}</p>`
-    : "";
-
-  const sourcesHtml =
-    card.sources.length > 0
-      ? `<div style="font-size:13px;color:${TEXT_MUTED};">
-            <strong style="color:${BRAND_TEAL_DARK};font-size:11px;letter-spacing:0.06em;text-transform:uppercase;">Sources</strong>
-            <ul style="padding-left:18px;margin:6px 0 0;">
-              ${card.sources
-                .map(
-                  (source) =>
-                    `<li style="margin:0 0 4px;"><a href="${escapeHtml(source.url)}" style="color:${LINK};text-decoration:none;">${escapeHtml(source.label)}</a></li>`,
-                )
-                .join("")}
-            </ul>
-          </div>`
-      : "";
-
-  return `
-        <section style="border:1px solid ${CARD_BORDER};border-radius:10px;padding:20px;margin:0 0 14px;background:#ffffff;">
-          <div style="display:inline-block;padding:4px 9px;border-radius:4px;background:${BRAND_ORANGE};color:#ffffff;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:10px;">${escapeHtml(card.id)}</div>
-          <h3 style="margin:0 0 10px;font-size:18px;line-height:1.3;color:${TEXT_BODY};font-weight:600;">${escapeHtml(card.title)}</h3>
-          ${bodyHtml}
-          ${detailsHtml}
-          ${rationaleHtml}
-          ${sourcesHtml}${buttonsHtml}
-        </section>`;
-}
-
 // ---------- card text rendering (for text/plain alt) ----------
 
 function renderCardText(card) {
@@ -288,7 +232,7 @@ function renderCardText(card) {
 
 // ---------- full email render ----------
 
-export function renderApprovalEmail(payload) {
+export async function renderApprovalEmail(payload) {
   const eyebrowLabel = requiredString(payload.eyebrowLabel, "eyebrowLabel");
   const companyName = requiredString(
     payload.companyName ?? "OctoSync",
@@ -335,6 +279,9 @@ export function renderApprovalEmail(payload) {
     `${eyebrowLabel} — ${companyName} — ${generatedAt}`;
 
   const anyButtons = cards.some((c) => c.approveUrl);
+  const iconUrl = approvalBaseUrl
+    ? `${approvalBaseUrl}/static/octosync-icon.png`
+    : null;
 
   const textBody = [
     subject,
@@ -358,69 +305,18 @@ export function renderApprovalEmail(payload) {
       : []),
   ].join("\n");
 
-  const iconUrl = approvalBaseUrl
-    ? `${approvalBaseUrl}/static/octosync-icon.png`
-    : null;
-  const iconImg = iconUrl
-    ? `<img src="${escapeHtml(iconUrl)}" alt="OctoSync" width="40" height="32" style="display:block;border:0;outline:none;width:40px;height:auto;">`
-    : "";
-
-  const parentIssueBlock =
-    parentIssueUrl || parentIssueIdentifier
-      ? `
-        <p style="margin:18px 0 0;font-size:13px;color:${TEXT_MUTED};">
-          Review thread:
-          ${
-            parentIssueUrl
-              ? `<a href="${escapeHtml(parentIssueUrl)}" style="color:${LINK};text-decoration:none;font-weight:600;">${escapeHtml(parentIssueIdentifier ?? "Open in Paperclip")}</a>`
-              : escapeHtml(parentIssueIdentifier)
-          }
-        </p>`
-      : "";
-
-  const html = `
-    <!doctype html>
-    <html lang="en">
-      <body style="margin:0;padding:0;background:${PAGE_BG};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:${TEXT_BODY};">
-        <div style="max-width:640px;margin:0 auto;padding:24px 16px 32px;">
-          <header style="background:${BRAND_TEAL};border-radius:8px 8px 0 0;padding:14px 20px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-              <tr>
-                <td valign="middle" style="width:48px;">${iconImg}</td>
-                <td valign="middle" style="padding-left:12px;">
-                  <div style="font-size:15px;font-weight:700;letter-spacing:0.04em;color:#ffffff;line-height:1.1;">OCTOSYNC</div>
-                  <div style="font-size:10px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:${BRAND_CREAM};margin-top:2px;">${escapeHtml(eyebrowLabel)}</div>
-                </td>
-              </tr>
-            </table>
-          </header>
-
-          <div style="background:#ffffff;border:1px solid ${CARD_BORDER};border-top:0;border-radius:0 0 8px 8px;padding:24px 20px 20px;margin-bottom:18px;">
-            <h1 style="margin:0 0 8px;font-size:20px;line-height:1.3;color:${TEXT_BODY};font-weight:600;">${escapeHtml(companyName)}</h1>
-            <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:${TEXT_BODY};">${escapeHtml(summary)}</p>
-            <p style="margin:0;padding-top:14px;border-top:1px solid ${CARD_BORDER};font-size:14px;line-height:1.6;color:${TEXT_MUTED};">
-              ${
-                anyButtons
-                  ? "Approve or reject directly from the buttons below. Paperclip records the decision; the inbox remains the audit surface."
-                  : "Approvals remain in Paperclip. This email is a notification copy so the items are easier to scan outside the thread."
-              }
-            </p>
-          </div>
-
-          <section>${cards.map((c) => renderCardHtml(c)).join("")}</section>
-
-          ${parentIssueBlock}
-
-          <footer style="margin-top:24px;padding-top:14px;border-top:1px solid ${CARD_BORDER};color:${TEXT_MUTED};font-size:12px;line-height:1.5;">
-            ${
-              anyButtons
-                ? "Action links expire in 7 days. After that, action via the Paperclip inbox.<br>"
-                : ""
-            }Generated ${escapeHtml(generatedAt)} by the OctoSync workflow.
-          </footer>
-        </div>
-      </body>
-    </html>`;
+  const renderHtml = await loadHtmlRenderer();
+  const html = await renderHtml({
+    eyebrowLabel,
+    companyName,
+    generatedAt,
+    summary,
+    cards,
+    parentIssueIdentifier,
+    parentIssueUrl,
+    iconUrl,
+    anyButtons,
+  });
 
   return { subject, text: textBody, html };
 }
@@ -431,7 +327,7 @@ export async function sendApprovalEmail(payload) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) throw new Error("Missing RESEND_API_KEY");
 
-  const rendered = renderApprovalEmail(payload);
+  const rendered = await renderApprovalEmail(payload);
 
   const from = requiredString(payload.from, "from");
   const to = parseRecipientList(payload.to, "to");

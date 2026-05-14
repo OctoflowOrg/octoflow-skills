@@ -28,11 +28,47 @@ workflow-specific orchestrator scripts ship inside this skill:
 Both orchestrators compose on top of two shared scripts in the same
 skill:
 
-- `scripts/render-approval-email.mjs` — renders the unified OctoSync
-  brand shell, the per-card approval layout, and POSTs to Resend.
+- `scripts/render-approval-email.mjs` — normalizes the payload, signs
+  approve/reject URLs, generates the text/plain alt, and POSTs to
+  Resend. HTML generation is delegated to the React Email bundle at
+  `templates/dist/render.mjs` (see "Email templates" below).
 - `scripts/sign-approval-link.mjs` — HMAC-SHA256 token signer that
   produces the `${baseUrl}/confirm?token=...` URLs the email-approvals
   sidecar verifies.
+
+## Email templates
+
+The brand shell + per-card layout lives in `templates/src/*.tsx` and
+is rendered via `@react-email/components`. esbuild bundles the
+templates to `templates/dist/render.mjs`, which the JS renderer
+imports at runtime.
+
+`templates/dist/` is **gitignored**. The mirror workflow
+(`.github/workflows/mirror-skills.yml`) runs `npm install && npm run
+build` before rsyncing skills to `octoflow-skills`, so production
+always ships a fresh bundle. For local development:
+
+```sh
+cd config/paperclip/skills/octosync-emails/templates
+npm install
+npm run build
+```
+
+After editing any `templates/src/*.tsx` file, rebuild to refresh
+`dist/render.mjs`. Smoke-test with `node scripts/smoke.mjs` from the
+templates directory.
+
+For visual iteration without rebuilding, run the React Email dev
+server with hot reload:
+
+```sh
+npm run dev          # http://localhost:3001
+```
+
+Sample payloads live in `templates/previews/*.tsx` — each exports a
+default component that renders an `ApprovalEmail` with realistic
+data. Edit either the previews (to change sample data) or the
+components in `src/` (to change layout) and the browser refreshes.
 
 External dependency: the upstream `resend` skill
 (`https://skills.sh/resend/resend-skills/resend`) for Resend's API

@@ -1,0 +1,22 @@
+{
+  "name": "octosync-email-templates",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "React Email templates bundled to dist/render.mjs. Imported by ../scripts/render-approval-email.mjs at runtime. Run `npm install && npm run build` before committing changes.",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "email dev --dir ./previews --port 3001"
+  },
+  "dependencies": {
+    "@react-email/components": "0.0.32",
+    "@react-email/render": "1.0.5",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.12",
+    "esbuild": "0.24.0",
+    "react-email": "3.0.4"
+  }
+}
