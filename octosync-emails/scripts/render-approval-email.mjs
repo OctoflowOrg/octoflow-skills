@@ -2,8 +2,9 @@
 //
 // Single source of truth for the OctoSync brand shell + per-card
 // layout + Resend send call. Both linkedin-finalize-batch.mjs and
-// opportunity-digest.mjs delegate to this script via spawn (or import
-// renderApprovalEmail / sendApprovalEmail directly).
+// prospecting-approval-send.mjs import renderApprovalEmail /
+// sendApprovalEmail or renderProspectingApprovalEmail /
+// sendProspectingApprovalEmail from here.
 //
 // HTML rendering is delegated to the React Email bundle at
 // ../templates/dist/render.mjs. Run `npm install && npm run build` in
@@ -45,24 +46,39 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 import { signApprovalUrl } from "./sign-approval-link.mjs";
+import { signEmailToken } from "./sign-batch-link.mjs";
 
 const RESEND_URL = "https://api.resend.com/emails";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_BUNDLE_PATH = resolve(__dirname, "../templates/dist/render.mjs");
 
-let renderApprovalEmailHtmlCache = null;
-async function loadHtmlRenderer() {
-  if (!renderApprovalEmailHtmlCache) {
-    const mod = await import(TEMPLATE_BUNDLE_PATH);
-    if (typeof mod.renderApprovalEmailHtml !== "function") {
-      throw new Error(
-        `renderApprovalEmailHtml not found in ${TEMPLATE_BUNDLE_PATH}. Did you run 'npm install && npm run build' in templates/?`,
-      );
-    }
-    renderApprovalEmailHtmlCache = mod.renderApprovalEmailHtml;
+let templateBundleCache = null;
+async function loadTemplateBundle() {
+  if (!templateBundleCache) {
+    templateBundleCache = await import(TEMPLATE_BUNDLE_PATH);
   }
-  return renderApprovalEmailHtmlCache;
+  return templateBundleCache;
+}
+
+async function loadHtmlRenderer() {
+  const mod = await loadTemplateBundle();
+  if (typeof mod.renderApprovalEmailHtml !== "function") {
+    throw new Error(
+      `renderApprovalEmailHtml not found in ${TEMPLATE_BUNDLE_PATH}. Did you run 'npm install && npm run build' in templates/?`,
+    );
+  }
+  return mod.renderApprovalEmailHtml;
+}
+
+async function loadProspectingHtmlRenderer() {
+  const mod = await loadTemplateBundle();
+  if (typeof mod.renderProspectingApprovalEmailHtml !== "function") {
+    throw new Error(
+      `renderProspectingApprovalEmailHtml not found in ${TEMPLATE_BUNDLE_PATH}. Rebuild templates/.`,
+    );
+  }
+  return mod.renderProspectingApprovalEmailHtml;
 }
 
 // ---------- helpers ----------
@@ -319,6 +335,238 @@ export async function renderApprovalEmail(payload) {
   });
 
   return { subject, text: textBody, html };
+}
+
+// ---------- prospecting approval (checkbox-form) ----------
+
+function normalizeProspect(p, field) {
+  if (!p || typeof p !== "object") {
+    throw new Error(`${field} must be an object`);
+  }
+  return {
+    approvalId: requiredString(p.approvalId, `${field}.approvalId`),
+    name: optionalString(p.name, `${field}.name`),
+    role: requiredString(p.role, `${field}.role`),
+    email: requiredString(p.email, `${field}.email`),
+    isGenericInbox: Boolean(p.isGenericInbox),
+  };
+}
+
+function normalizeOpportunity(opp, index) {
+  if (!opp || typeof opp !== "object") {
+    throw new Error(`opportunities[${index}] must be an object`);
+  }
+  if (!Array.isArray(opp.prospects) || opp.prospects.length === 0) {
+    throw new Error(`opportunities[${index}].prospects must be a non-empty array`);
+  }
+  return {
+    id: requiredString(opp.id, `opportunities[${index}].id`),
+    companyName: requiredString(opp.companyName, `opportunities[${index}].companyName`),
+    industry: optionalString(opp.industry, `opportunities[${index}].industry`),
+    location: optionalString(opp.location, `opportunities[${index}].location`),
+    whyNow: requiredString(opp.whyNow, `opportunities[${index}].whyNow`),
+    workflow: optionalString(opp.workflow, `opportunities[${index}].workflow`),
+    confidence: optionalString(opp.confidence, `opportunities[${index}].confidence`),
+    sources: Array.isArray(opp.sources)
+      ? opp.sources.map((s, j) =>
+          normalizeSource(s, `opportunities[${index}].sources`, j),
+        )
+      : [],
+    prospects: opp.prospects.map((p, j) =>
+      normalizeProspect(p, `opportunities[${index}].prospects[${j}]`),
+    ),
+  };
+}
+
+function renderProspectingTextAlt({
+  generatedAt,
+  opportunities,
+  totalProspects,
+  parentIssueIdentifier,
+  parentIssueUrl,
+}) {
+  const lines = [
+    `Weekly Prospecting Approval — ${generatedAt}`,
+    "",
+    `${opportunities.length} ${opportunities.length === 1 ? "opportunity" : "opportunities"} · ${totalProspects} ${totalProspects === 1 ? "prospect" : "prospects"} ready for outreach.`,
+    "",
+    "Open the HTML version of this email to use the checkbox form. If you are reading plain text, action via the Paperclip inbox.",
+    "",
+  ];
+  for (const opp of opportunities) {
+    const meta = [opp.industry, opp.location].filter(Boolean).join(", ");
+    lines.push(meta ? `${opp.companyName} (${meta})` : opp.companyName);
+    lines.push(`  Why now: ${opp.whyNow}`);
+    const wc = [
+      opp.workflow ? `Workflow: ${opp.workflow}` : null,
+      opp.confidence ? `Confidence: ${opp.confidence}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    if (wc) lines.push(`  ${wc}`);
+    for (const s of opp.sources) lines.push(`  Source: ${s.label} — ${s.url}`);
+    lines.push("  Prospects:");
+    for (const p of opp.prospects) {
+      const who = p.name ? `${p.name}, ${p.role}` : `(no individual found) ${p.role}`;
+      lines.push(
+        `    - ${who} <${p.email}>${p.isGenericInbox ? " [generic inbox]" : ""}`,
+      );
+    }
+    lines.push("");
+  }
+  if (parentIssueIdentifier || parentIssueUrl) {
+    lines.push("Review thread:");
+    if (parentIssueIdentifier && parentIssueUrl) {
+      lines.push(`- ${parentIssueIdentifier}: ${parentIssueUrl}`);
+    } else if (parentIssueUrl) {
+      lines.push(`- ${parentIssueUrl}`);
+    } else {
+      lines.push(`- ${parentIssueIdentifier}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+export async function renderProspectingApprovalEmail(payload) {
+  const generatedAt = requiredString(
+    payload.generatedAt ?? new Date().toISOString().slice(0, 10),
+    "generatedAt",
+  );
+  const emailRef = requiredString(payload.emailRef, "emailRef");
+  const companyId = requiredString(payload.companyId, "companyId");
+
+  if (
+    !Array.isArray(payload.opportunities) ||
+    payload.opportunities.length === 0
+  ) {
+    throw new Error("opportunities must be a non-empty array");
+  }
+  const opportunities = payload.opportunities.map((opp, i) =>
+    normalizeOpportunity(opp, i),
+  );
+  const totalProspects = opportunities.reduce(
+    (sum, o) => sum + o.prospects.length,
+    0,
+  );
+  if (totalProspects === 0) {
+    throw new Error("at least one prospect is required");
+  }
+
+  const signingKey = optionalTrimmedString(
+    process.env.EMAIL_APPROVAL_SIGNING_KEY,
+  );
+  const approvalBaseUrl = optionalTrimmedString(
+    process.env.EMAIL_APPROVAL_PUBLIC_URL,
+  );
+  if (!signingKey) {
+    throw new Error(
+      "EMAIL_APPROVAL_SIGNING_KEY required to sign the email token",
+    );
+  }
+  if (!approvalBaseUrl) {
+    throw new Error(
+      "EMAIL_APPROVAL_PUBLIC_URL required to build the /decide URL",
+    );
+  }
+
+  const parentIssueIdentifier = optionalString(
+    payload.parentIssueIdentifier,
+    "parentIssueIdentifier",
+  );
+  const parentIssueUrl = deriveParentIssueUrl(
+    payload.parentIssueUrl,
+    parentIssueIdentifier,
+  );
+
+  const token = signEmailToken({
+    emailRef,
+    companyId,
+    signingKey,
+  });
+  const trimmedBase = approvalBaseUrl.replace(/\/+$/, "");
+  const actionUrl = `${trimmedBase}/decide`;
+  const iconUrl = `${trimmedBase}/static/octosync-icon.png`;
+
+  const subject =
+    optionalString(payload.subject, "subject") ??
+    `Weekly Prospecting Approval — ${generatedAt}`;
+
+  const renderHtml = await loadProspectingHtmlRenderer();
+  const html = await renderHtml({
+    generatedAt,
+    parentIssueIdentifier,
+    parentIssueUrl,
+    iconUrl,
+    token,
+    actionUrl,
+    opportunities,
+    totalProspects,
+  });
+
+  const text = renderProspectingTextAlt({
+    generatedAt,
+    opportunities,
+    totalProspects,
+    parentIssueIdentifier,
+    parentIssueUrl,
+  });
+
+  return { subject, text, html };
+}
+
+export async function sendProspectingApprovalEmail(payload) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) throw new Error("Missing RESEND_API_KEY");
+
+  const rendered = await renderProspectingApprovalEmail(payload);
+
+  const from = requiredString(payload.from, "from");
+  const to = parseRecipientList(payload.to, "to");
+  const replyTo = optionalString(payload.replyTo, "replyTo");
+
+  const requestBody = {
+    from,
+    to,
+    subject: rendered.subject,
+    text: rendered.text,
+    html: rendered.html,
+  };
+  if (replyTo) requestBody.reply_to = replyTo;
+  if (Array.isArray(payload.tags) && payload.tags.length > 0) {
+    requestBody.tags = payload.tags;
+  }
+
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
+  };
+  if (payload.idempotencyKey) {
+    headers["Idempotency-Key"] = requiredString(
+      payload.idempotencyKey,
+      "idempotencyKey",
+    );
+  }
+
+  const response = await fetch(RESEND_URL, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(requestBody),
+  });
+  const text = await response.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = { raw: text };
+  }
+  if (!response.ok) {
+    const message =
+      data?.message ||
+      data?.error ||
+      `Resend request failed with status ${response.status}`;
+    throw new Error(message);
+  }
+  return data;
 }
 
 // ---------- Resend send ----------

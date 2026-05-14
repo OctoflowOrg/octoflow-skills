@@ -25,34 +25,45 @@ stale.
 When approved: CMO wakes on `approval_approved`, picks the winning
 option, creates the Buffer Scheduler publisher child.
 
-## Opportunity — `approve_opportunity_pursuit`
+## Opportunity prospecting — `approve_prospect_outreach`
 
-Created by `opportunity-digest.mjs` once per ranked opportunity in
-the digest (typically 3–5 per weekly run, per the Researcher's
-Output format). **Multi-select**: each approval is independent. A
-user can approve any subset (1, all, none). No "first wins"
-semantics — every approval the user clicks Approve on becomes a
-pursued opportunity.
+Created by `prospecting-approval-send.mjs` once per researched
+prospect (typically 3–4 prospects across 3–5 opportunities per
+weekly run). **Multi-select**: each approval is independent. The
+user submits a single form whose checkboxes map 1-to-1 onto these
+approvals. Checked → approved, unchecked → rejected.
 
 ```json
 {
-  "type": "approve_opportunity_pursuit",
+  "type": "approve_prospect_outreach",
+  "emailRef": "prospecting-approval:<parentIssueId>",
   "opportunityId": "<rank>-<slug>",
-  "opportunityName": "<canonical name>",
-  "targetBuyer": "<role>",
-  "workflow": "<operational category — recruiting / sales-admin / ...>",
-  "rationale": "<one-line why now>",
+  "opportunityName": "<canonical company name>",
+  "prospect": {
+    "name": "<person name or null>",
+    "role": "<role or generic-inbox label>",
+    "email": "<contact email>",
+    "isGenericInbox": false
+  },
+  "rationale": "<one-line why this prospect — derived from the opportunity's whyNow>",
   "sourceDigestIssueId": "<parent issue id>",
   "selectionMode": "multi_select"
 }
 ```
 
+`emailRef` is the trunk that ties every approval in one weekly email
+together. The sidecar's `/decide` endpoint walks the tree by querying
+all approvals where `payload.emailRef` matches the token's signed
+emailRef. Resend's own emailId is recorded on the parent issue's
+"Weekly prospecting approval sent" comment (`resend=<uuid>`) for
+cross-system trace into Resend logs and webhooks.
+
 When approved: CSO wakes on `approval_approved`, records the
-approved opportunity (via comment on parent), and prepares the
-outreach trigger for the next-branch outreach flow.
+approved prospect (via comment on parent), and the next-branch
+outreach flow drafts a cold outreach email for that prospect.
 
 When rejected: CSO wakes on `approval_rejected`, records that the
-opportunity was explicitly skipped this week.
+prospect was explicitly skipped this week.
 
 ## Idempotency keys
 
@@ -62,9 +73,9 @@ for the full list.)
 - LinkedIn approval idempotency: built inside
   `linkedin-finalize-batch.mjs`; agents don't author the key
   directly.
-- Opportunity approval idempotency:
-  `opportunity-pursuit:<parentIssueId>:<opportunityId>` — built by
-  `opportunity-digest.mjs`.
+- Prospecting approval idempotency: keyed on `(parentId,
+  opportunityId, prospectEmail)` — `prospecting-approval-send.mjs`
+  matches against existing approvals before creating new ones.
 
 ## Future workflows
 

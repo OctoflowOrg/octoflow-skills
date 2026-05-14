@@ -12,9 +12,12 @@ or random suffixes.
 - **LinkedIn review approvals** (one per option in the review batch,
   created by `linkedin-finalize-batch.mjs`):
   Constructed inside the helper. Agents do not author these directly.
-- **Opportunity-pursuit approvals** (one per ranked opportunity in
-  the weekly digest, created by `opportunity-digest.mjs`):
-  `opportunity-pursuit:<parentIssueId>:<opportunityId>`
+- **Prospect-outreach approvals** (one per researched prospect in
+  the weekly prospecting email, created by
+  `prospecting-approval-send.mjs`): matched on the tuple
+  `(parentIssueId, opportunityId, prospectEmail)`. The helper looks
+  up existing approvals on the parent and reuses them when the tuple
+  matches, so a re-run is safe.
 
 ## Email send keys
 
@@ -22,8 +25,8 @@ Idempotency keys passed to the Resend API to prevent duplicate sends
 on retry. Resend honors these for 24 hours.
 
 - **LinkedIn review email**: `linkedin-review:<parentIssueId>`
-- **Weekly opportunity digest email**:
-  `opportunity-digest:<parentIssueId>`
+- **Weekly prospecting approval email**:
+  `prospecting-approval:<parentIssueId>`
 
 ## Comment idempotency
 

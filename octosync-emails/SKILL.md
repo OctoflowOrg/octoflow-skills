@@ -20,21 +20,30 @@ workflow-specific orchestrator scripts ship inside this skill:
   option approvals, send the review email, post audit-trail comments
   on the parent, and patch parent → `in_review`. Same atomic helper
   the CMO procedure has always invoked at step 7; now lives here.
-- `scripts/opportunity-digest.mjs` — CSO uses this to create one
-  Paperclip approval per ranked opportunity, send the weekly digest
-  email with one Approve/Reject card per opportunity, then patch
-  parent → `in_review` to wait for human decisions.
+- `scripts/prospecting-approval-send.mjs` — CSO uses this to create
+  one Paperclip approval per researched prospect, send the weekly
+  prospecting approval email (one checkbox-form covering every
+  prospect across every opportunity), then patch parent → `in_review`
+  to wait for human decisions.
 
-Both orchestrators compose on top of two shared scripts in the same
-skill:
+Both orchestrators compose on top of shared scripts in the same skill:
 
 - `scripts/render-approval-email.mjs` — normalizes the payload, signs
-  approve/reject URLs, generates the text/plain alt, and POSTs to
-  Resend. HTML generation is delegated to the React Email bundle at
-  `templates/dist/render.mjs` (see "Email templates" below).
-- `scripts/sign-approval-link.mjs` — HMAC-SHA256 token signer that
-  produces the `${baseUrl}/confirm?token=...` URLs the email-approvals
-  sidecar verifies.
+  approve/reject URLs (single-action LinkedIn) or the email token
+  (prospecting checkbox form),
+  generates the text/plain alt, and POSTs to Resend. HTML generation
+  is delegated to the React Email bundle at `templates/dist/render.mjs`
+  (see "Email templates" below).
+- `scripts/sign-approval-link.mjs` — HMAC-SHA256 token signer for the
+  single-action `${baseUrl}/confirm?token=...` URLs used by the
+  LinkedIn review email.
+- `scripts/sign-batch-link.mjs` — HMAC-SHA256 token signer for the
+  prospecting form. Signs `{emailRef, companyId, expiresAt}`. The
+  signed `emailRef` is the trunk: the sidecar's `/decide` endpoint
+  asks Paperclip for every approval whose `payload.emailRef` matches,
+  and that authoritative list is what gets approved/rejected. The
+  form's submitted approval IDs only filter that list — any id not
+  found in Paperclip is ignored.
 
 ## Email templates
 
@@ -79,9 +88,9 @@ renderer; agents do not call Resend API endpoints from the prompt.
 
 The agent prompt names which script to invoke. CMO invokes
 `linkedin-finalize-batch.mjs` from step 7 of its LinkedIn procedure.
-CSO invokes `opportunity-digest.mjs` from step 12 of its weekly
-opportunity procedure. Neither agent invokes the shared scripts
-directly — the orchestrators spawn them internally.
+CSO invokes `prospecting-approval-send.mjs` from step 12 of its
+weekly opportunity procedure. Neither agent invokes the shared
+scripts directly — the orchestrators spawn them internally.
 
 ## Invocation pattern
 
@@ -102,13 +111,13 @@ node "$HELPER" \
   --cmo-agent-id "$PAPERCLIP_AGENT_ID" \
   --review-package /tmp/review-package.json
 
-# CSO — opportunity digest:
-HELPER=$(find / -name opportunity-digest.mjs \
+# CSO — weekly prospecting approval:
+HELPER=$(find / -name prospecting-approval-send.mjs \
   -path "*octosync-emails*" 2>/dev/null | head -1)
 node "$HELPER" \
   --parent-id "<parentIssueId>" \
   --cso-agent-id "$PAPERCLIP_AGENT_ID" \
-  --digest /tmp/digest-payload.json
+  --prospecting /tmp/prospecting-payload.json
 ```
 
 Path-flag values are plain filesystem paths — **no `@` prefix**. (The
@@ -131,16 +140,18 @@ and the calling agent posts a short blocker comment on the parent
 - `EMAIL_APPROVAL_PUBLIC_URL` — sidecar's public base URL (e.g.
   `https://agents.octosync.dev/email-approval`).
 - `PAPERCLIP_OUTBOUND_EMAIL` — single canonical From: and Reply-To: for
-  every workflow email (LinkedIn review + opportunity digest). Domain
+  every workflow email (LinkedIn review + prospecting approval). Domain
   must be verified in Resend.
 - `LINKEDIN_REVIEW_EMAIL_TO` — CMO review-email recipient(s).
-- `WORKFLOW_EMAIL_TO` — CSO digest recipient(s).
+- `WORKFLOW_EMAIL_TO` — CSO prospecting-email recipient(s).
 - `PAPERCLIP_PUBLIC_URL` / `PAPERCLIP_COMPANY_ROUTE_KEY` — used to
   derive `parentIssueUrl` if not provided explicitly.
 
 If `EMAIL_APPROVAL_SIGNING_KEY` or `EMAIL_APPROVAL_PUBLIC_URL` is
-unset, the renderer omits buttons and sends a notification-only
-email (the prior behavior).
+unset for the LinkedIn review email, the renderer omits buttons and
+sends a notification-only copy (the prior behavior). The prospecting
+flow requires both — `prospecting-approval-send.mjs` blockers with a
+clear error if either is missing.
 
 ## References
 
@@ -157,5 +168,5 @@ For niche detail loaded on demand:
   HMAC algorithm, TTL.
 - `references/approval-payload.md` — what goes into a Paperclip
   approval's `payload` field per workflow (LinkedIn
-  `approve_ceo_strategy` / single-select, opportunity
-  `approve_opportunity_pursuit` / multi-select).
+  `approve_ceo_strategy` / single-select, prospecting
+  `approve_prospect_outreach` / multi-select).

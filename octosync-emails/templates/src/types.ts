@@ -33,3 +33,34 @@ export type ApprovalEmailPayload = {
     iconUrl: string | null;
     anyButtons: boolean;
 };
+
+export type Prospect = {
+    approvalId: string;
+    name: string | null;
+    role: string;
+    email: string;
+    isGenericInbox: boolean;
+};
+
+export type Opportunity = {
+    id: string;
+    companyName: string;
+    industry: string | null;
+    location: string | null;
+    whyNow: string;
+    workflow: string | null;
+    confidence: string | null;
+    sources: Source[];
+    prospects: Prospect[];
+};
+
+export type ProspectingApprovalPayload = {
+    generatedAt: string;
+    parentIssueIdentifier: string | null;
+    parentIssueUrl: string | null;
+    iconUrl: string | null;
+    token: string;
+    actionUrl: string;
+    opportunities: Opportunity[];
+    totalProspects: number;
+};

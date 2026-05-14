@@ -1,7 +1,11 @@
 import { render } from "@react-email/render";
 
 import { ApprovalEmail } from "./ApprovalEmail";
-import type { ApprovalEmailPayload } from "./types";
+import { ProspectingApprovalEmail } from "./ProspectingApprovalEmail";
+import type {
+    ApprovalEmailPayload,
+    ProspectingApprovalPayload
+} from "./types";
 
 export async function renderApprovalEmailHtml(
     payload: ApprovalEmailPayload
@@ -9,4 +13,18 @@ export async function renderApprovalEmailHtml(
     return render(<ApprovalEmail payload={payload} />);
 }
 
-export type { ApprovalEmailPayload, Card, Detail, Source } from "./types";
+export async function renderProspectingApprovalEmailHtml(
+    payload: ProspectingApprovalPayload
+): Promise<string> {
+    return render(<ProspectingApprovalEmail payload={payload} />);
+}
+
+export type {
+    ApprovalEmailPayload,
+    Card,
+    Detail,
+    Opportunity,
+    Prospect,
+    ProspectingApprovalPayload,
+    Source
+} from "./types";
