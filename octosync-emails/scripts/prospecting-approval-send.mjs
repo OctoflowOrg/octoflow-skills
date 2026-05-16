@@ -96,9 +96,21 @@ function authHeaders({ mutating = false } = {}) {
   return result;
 }
 
+// Pull every detail field that might carry the validation reason out
+// of Paperclip's response body. The plain `resp.body.error` was hiding
+// the actual field-level reasons during the 2026-05-16 smoke (the
+// agent saw "Validation error" with no details).
 function describeError(resp) {
   if (typeof resp.body === "string") return resp.body;
-  return resp.body?.error || JSON.stringify(resp.body ?? {});
+  const body = resp.body ?? {};
+  const parts = [];
+  if (body.error) parts.push(String(body.error));
+  if (body.message && body.message !== body.error) parts.push(String(body.message));
+  if (body.details) parts.push(`details=${JSON.stringify(body.details)}`);
+  if (body.issues) parts.push(`issues=${JSON.stringify(body.issues)}`);
+  if (body.fieldErrors) parts.push(`fieldErrors=${JSON.stringify(body.fieldErrors)}`);
+  if (parts.length === 0) return JSON.stringify(body);
+  return parts.join(" | ");
 }
 
 function normaliseEmail(value) {
@@ -317,6 +329,16 @@ export async function prospectingApprovalSend({
   };
 }
 
+// Resend's tag-value validation only accepts /[a-zA-Z0-9_-]/. Our
+// emailRef contains a colon (e.g. `prospecting-approval:<parentId>`),
+// which is fine everywhere else but trips Resend's `Tags should only
+// contain ASCII letters, numbers, underscores, or dashes` rejection
+// — caught during the 2026-05-16 smoke. Sanitize for tag use only;
+// the canonical emailRef in approval payloads keeps its colon.
+function sanitizeForResendTag(value) {
+  return String(value).replace(/[^A-Za-z0-9_-]/g, "_");
+}
+
 function buildEmailPayload(
   prospectingPayload,
   oppsWithApprovals,
@@ -335,7 +357,7 @@ function buildEmailPayload(
     replyTo: process.env.PAPERCLIP_OUTBOUND_EMAIL,
     tags: [
       { name: "workflow", value: "prospecting-approval" },
-      { name: "emailRef", value: emailRef },
+      { name: "emailRef", value: sanitizeForResendTag(emailRef) },
     ],
     opportunities: oppsWithApprovals.map((o) => ({
       id: o.id,
