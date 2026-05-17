@@ -33,21 +33,33 @@ weekly run). **Multi-select**: each approval is independent. The
 user submits a single form whose checkboxes map 1-to-1 onto these
 approvals. Checked → approved, unchecked → rejected.
 
+**Top-level `type` is `request_board_approval`** (the only generic
+value in Paperclip's `APPROVAL_TYPES` whitelist that fits — using
+our own `approve_prospect_outreach` here causes the create call to
+return HTTP 400). The internal discriminator lives at
+`payload.type` so the CSO's wake handler and sidecar `/decide`
+endpoint route correctly:
+
 ```json
 {
-  "type": "approve_prospect_outreach",
-  "emailRef": "prospecting-approval:<parentIssueId>",
-  "opportunityId": "<rank>-<slug>",
-  "opportunityName": "<canonical company name>",
-  "prospect": {
-    "name": "<person name or null>",
-    "role": "<role or generic-inbox label>",
-    "email": "<contact email>",
-    "isGenericInbox": false
-  },
-  "rationale": "<one-line why this prospect — derived from the opportunity's whyNow>",
-  "sourceDigestIssueId": "<parent issue id>",
-  "selectionMode": "multi_select"
+  "type": "request_board_approval",
+  "requestedByAgentId": "<cso-agent-id>",
+  "issueIds": ["<parent issue id>"],
+  "payload": {
+    "type": "approve_prospect_outreach",
+    "emailRef": "prospecting-approval:<parentIssueId>",
+    "opportunityId": "<rank>-<slug>",
+    "opportunityName": "<canonical company name>",
+    "prospect": {
+      "name": "<person name or null>",
+      "role": "<role or generic-inbox label>",
+      "email": "<contact email>",
+      "isGenericInbox": false
+    },
+    "rationale": "<one-line why this prospect — derived from the opportunity's whyNow>",
+    "sourceDigestIssueId": "<parent issue id>",
+    "selectionMode": "multi_select"
+  }
 }
 ```
 

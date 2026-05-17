@@ -190,8 +190,13 @@ function emailRefFor(parentId) {
 }
 
 function findExistingApproval(approvals, emailRef, opportunityId, email) {
+  // Match on payload.type too — top-level `type` is the generic
+  // `request_board_approval`, so other request_board_approval
+  // approvals on the same parent (e.g. budget overrides) could
+  // collide if we only matched on emailRef+opp+email.
   return approvals.find(
     (a) =>
+      a?.payload?.type === "approve_prospect_outreach" &&
       a?.payload?.emailRef === emailRef &&
       a?.payload?.opportunityId === opportunityId &&
       normaliseEmail(a?.payload?.prospect?.email ?? "") === normaliseEmail(email),
@@ -436,8 +441,18 @@ async function createApprovalWith(
   prospect,
   emailRef,
 ) {
+  // Top-level `type` must be one of Paperclip's whitelisted
+  // APPROVAL_TYPES (hire_agent / approve_ceo_strategy /
+  // budget_override_required / request_board_approval). The
+  // `request_board_approval` value fits prospecting semantically
+  // (the board approves which prospects to pursue) and is the only
+  // generic one in the whitelist. `payload.type` keeps our internal
+  // discriminator — the sidecar's /decide endpoint walks approvals
+  // by `payload.emailRef` and the CSO's wake handler routes on
+  // `payload.type === "approve_prospect_outreach"` to disambiguate
+  // from other `request_board_approval`-typed approvals.
   const body = {
-    type: "approve_prospect_outreach",
+    type: "request_board_approval",
     requestedByAgentId: csoAgentId,
     issueIds: [parentId],
     payload: {
