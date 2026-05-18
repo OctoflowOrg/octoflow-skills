@@ -27,18 +27,20 @@ option, creates the Buffer Scheduler publisher child.
 
 ## Opportunity prospecting — `approve_prospect_outreach`
 
-Created by `prospecting-approval-send.mjs` once per researched
-prospect (typically 3–4 prospects across 3–5 opportunities per
-weekly run). **Multi-select**: each approval is independent. The
-user submits a single form whose checkboxes map 1-to-1 onto these
-approvals. Checked → approved, unchecked → rejected.
+Created by the approval-broker's `POST /approvals/send` handler
+(via `services/approval-broker/workflows/prospecting.mjs`) once per
+researched prospect — typically 3–4 prospects across 3–5
+opportunities per weekly run. **Multi-select**: each approval is
+independent. The user submits a single form whose checkboxes map
+1-to-1 onto these approvals. Checked → approved, unchecked →
+rejected.
 
 **Top-level `type` is `request_board_approval`** (the only generic
 value in Paperclip's `APPROVAL_TYPES` whitelist that fits — using
 our own `approve_prospect_outreach` here causes the create call to
 return HTTP 400). The internal discriminator lives at
-`payload.type` so the CSO's wake handler and sidecar `/decide`
-endpoint route correctly:
+`payload.type` so the CSO's wake handler and broker's
+`/approvals/receive` endpoint route correctly:
 
 ```json
 {
@@ -64,11 +66,12 @@ endpoint route correctly:
 ```
 
 `emailRef` is the trunk that ties every approval in one weekly email
-together. The sidecar's `/decide` endpoint walks the tree by querying
-all approvals where `payload.emailRef` matches the token's signed
-emailRef. Resend's own emailId is recorded on the parent issue's
-"Weekly prospecting approval sent" comment (`resend=<uuid>`) for
-cross-system trace into Resend logs and webhooks.
+together. The broker's `/approvals/receive` endpoint walks the tree
+by querying all approvals where `payload.emailRef` matches the
+token's signed emailRef. Resend's own emailId is recorded on the
+parent issue's "Weekly prospecting approval sent" comment
+(`resend=<uuid>`) for cross-system trace into Resend logs and
+webhooks.
 
 When approved: CSO wakes on `approval_approved`, records the
 approved prospect (via comment on parent), and the next-branch
@@ -86,8 +89,9 @@ for the full list.)
   `linkedin-finalize-batch.mjs`; agents don't author the key
   directly.
 - Prospecting approval idempotency: keyed on `(parentId,
-  opportunityId, prospectEmail)` — `prospecting-approval-send.mjs`
-  matches against existing approvals before creating new ones.
+  opportunityId, prospectEmail)` — the broker's
+  `workflows/prospecting.mjs` matches against existing approvals
+  before creating new ones.
 
 ## Future workflows
 
@@ -102,6 +106,7 @@ pattern:
    creates the approvals and calls the shared
    `render-approval-email.mjs`.
 
-The sidecar doesn't care about the `type` — it just hits Paperclip's
+The broker doesn't care about the `type` once a workflow module is
+registered for it — it just hits Paperclip's
 approve/reject endpoint. The orchestrator's `payload` is the
 canonical record of intent.
