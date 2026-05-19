@@ -1,196 +1,109 @@
 ---
 name: octosync-emails
 description: >
-  Load when authoring or sending OctoSync workflow emails that include
-  HMAC-signed Approve/Reject buttons backed by Paperclip approvals.
-  Covers both the LinkedIn review email (CMO) and the Weekly
-  Opportunity Digest (CSO). Wraps the external `resend` skill with
-  OctoSync brand shell, HMAC button signing, and the email-approvals
-  sidecar protocol. Required by the CMO during the LinkedIn finalize-
-  batch step and by the CSO during the weekly opportunity digest send.
+  Load when an OctoSync agent needs to send a workflow approval email
+  (LinkedIn review or weekly prospecting digest). Ships a thin POST
+  client that calls the approval-broker; the broker owns approval
+  creation, HTML rendering, Resend send, audit comment, and the
+  parent → in_review patch. Used by the CMO at LinkedIn step 7 and
+  the CSO at Opportunity step 12.
 ---
 
-# OctoSync approval emails
+# OctoSync approval emails — thin-client skill
 
-This skill is the **agent-side surface** of the OctoSync approval-email
-flow. The heavy lifting moved to the `approval-broker` sidecar
-(`services/approval-broker/`); the skill now ships a thin client
-plus the still-agent-owned LinkedIn helper. Two scripts are
-agent-invoked:
+The agent-side surface for the OctoSync approval-email flow. Heavy
+lifting (approval creation, React Email rendering, Resend, audit
+comments, parent.status transitions) lives in the approval-broker
+sidecar at `services/approval-broker/`. This skill ships exactly
+one script — a HTTP client.
 
-- `scripts/send-approval.mjs` — workflow-agnostic thin client. POSTs
-  the payload to the approval-broker's `POST /approvals/send`
-  endpoint and prints the broker's response. Used by the CSO at
-  step 12 of the weekly opportunity procedure for the prospecting
-  flow. The broker creates the approvals, renders+sends the email
-  via Resend, posts the audit comment, and patches parent →
-  `in_review` — none of that runs inside the agent's container
-  anymore.
-- `scripts/linkedin-finalize-batch.mjs` — CMO uses this for the
-  LinkedIn review flow. **Still runs the legacy in-container
-  pattern** (creates approvals, sends email, patches `in_review`).
-  Will be replaced with a `send-approval.mjs --workflow linkedin`
-  invocation in a follow-up PR once the broker's
-  `workflows/linkedin.mjs` lands.
+## Script
 
-Shared support scripts kept in the skill for the surviving LinkedIn
-helper:
+- `scripts/send-approval.mjs` — workflow-agnostic thin POST client.
+  Reads the agent's payload JSON, POSTs it to
+  `${EMAIL_APPROVAL_PUBLIC_URL}/send` with bearer auth, prints the
+  broker's response. ~50 lines.
 
-- `scripts/render-approval-email.mjs` — normalises the payload, signs
-  approve/reject URLs (single-action LinkedIn buttons) or the email
-  token (prospecting checkbox form), generates the text/plain alt,
-  and POSTs to Resend. The broker has its own copy at
-  `services/approval-broker/email-render.mjs` so prospecting no
-  longer needs the skill copy at runtime.
-- `scripts/sign-approval-link.mjs` — HMAC-SHA256 token signer for the
-  single-action `${baseUrl}/confirm?token=...` URLs used by the
-  LinkedIn review email.
-
-The prospecting flow has **no skill-side code path** anymore. After
-multiple smokes (OCT-359, OCT-363, OCT-367) showed the CSO agent
-calling skill-side renderers / signers directly to bypass the broker
-(producing emails with the legacy `/decide` form action),
-`renderProspectingApprovalEmail`, `sendProspectingApprovalEmail`,
-and `sign-batch-link.mjs` were removed from this skill. The thin
-client (`send-approval.mjs`) is now the only path from agent to
-broker for prospecting; the broker is the only path from there to
-Resend.
-
-## Email templates
-
-The brand shell + per-card layout lives in `templates/src/*.tsx` and
-is rendered via `@react-email/components`. esbuild bundles the
-templates to `templates/dist/render.mjs`, which the JS renderer
-imports at runtime.
-
-`templates/dist/` is **gitignored**. The mirror workflow
-(`.github/workflows/mirror-skills.yml`) runs `npm install && npm run
-build` before rsyncing skills to `octoflow-skills`, so production
-always ships a fresh bundle. For local development:
+## Invocation
 
 ```sh
-cd config/paperclip/skills/octosync-emails/templates
-npm install
-npm run build
-```
-
-After editing any `templates/src/*.tsx` file, rebuild to refresh
-`dist/render.mjs`. Smoke-test with `node scripts/smoke.mjs` from the
-templates directory.
-
-For visual iteration without rebuilding, run the React Email dev
-server with hot reload:
-
-```sh
-npm run dev          # http://localhost:3001
-```
-
-Sample payloads live in `templates/previews/*.tsx` — each exports a
-default component that renders an `ApprovalEmail` with realistic
-data. Edit either the previews (to change sample data) or the
-components in `src/` (to change layout) and the browser refreshes.
-
-External dependency: the upstream `resend` skill
-(`https://skills.sh/resend/resend-skills/resend`) for Resend's API
-patterns. Both orchestrators read `RESEND_API_KEY` directly via the
-renderer; agents do not call Resend API endpoints from the prompt.
-
-## When to invoke which script
-
-The agent prompt names which script to invoke. CMO invokes
-`linkedin-finalize-batch.mjs` from step 7 of its LinkedIn procedure
-(legacy in-container path until the broker's LinkedIn workflow
-lands). CSO invokes `send-approval.mjs` from step 12 of its weekly
-opportunity procedure (broker-owned path).
-
-## Invocation pattern
-
-The agent passes a JSON payload **file path** on the command line.
-For the thin client (`send-approval.mjs`), the agent additionally
-passes `--workflow <name>` so the broker can route to the right
-workflow handler.
-
-Skill mount paths are adapter-dependent — `claude_local` materialises
-under `~/.claude/skills/octosync-emails--<hash>/`, `codex_local` uses a
-global skills directory. Discover the script dynamically rather than
-hard-coding either:
-
-```sh
-# CMO — LinkedIn finalize-batch (still legacy in-container path):
-HELPER=$(find / -name linkedin-finalize-batch.mjs \
-  -path "*octosync-emails*" 2>/dev/null | head -1)
-node "$HELPER" \
-  --parent-id "<parentIssueId>" \
-  --cmo-agent-id "$PAPERCLIP_AGENT_ID" \
-  --review-package /tmp/review-package.json
-
-# CSO — weekly prospecting approval (broker-owned):
 CLIENT=$(find / -name send-approval.mjs \
   -path "*octosync-emails*" 2>/dev/null | head -1)
 node "$CLIENT" \
-  --workflow prospecting \
+  --workflow <prospecting|linkedin> \
   --parent-id "<parentIssueId>" \
   --agent-id "$PAPERCLIP_AGENT_ID" \
-  --payload /tmp/prospecting-payload.json
+  --payload /tmp/<workflow>-payload.json
 ```
 
-Path-flag values are plain filesystem paths — **no `@` prefix**. (The
-scripts will tolerate a leading `@` if one slips in, but the canonical
-form omits it.)
+Path-flag values are plain filesystem paths — **no `@` prefix**.
 
 ## Exit semantics
 
-Both `linkedin-finalize-batch.mjs` and `send-approval.mjs` exit `0`
-on success and non-zero on a blocker. On non-zero exit, they print
-`BLOCKER: <reason>` to stderr (and `send-approval.mjs` echoes the
-broker's error text). The calling agent posts a short blocker
-comment on the parent (per `octosync-coordination-rules`).
+`0` on success (broker created approvals, sent email, posted audit
+comment on parent, patched parent → `in_review`). Non-zero on a
+blocker; client prints `BLOCKER: <reason>` to stderr (and stdout)
+with the broker's error text. Calling agent posts a short blocker
+comment on the parent and stops.
 
-## Required env vars
+## Required env (on the agent's container)
 
-Different for the two scripts now that the broker owns the
-prospecting outbound:
+- `EMAIL_APPROVAL_PUBLIC_URL` — broker public base URL, e.g.
+  `https://agents.octosync.dev/approvals`
+- `EMAIL_APPROVAL_INTERNAL_TOKEN` — bearer token shared with the
+  broker
+- `PAPERCLIP_COMPANY_ID` — passed through to the broker
+- `PAPERCLIP_OUTBOUND_EMAIL` — From: + Reply-To: for this agent's
+  emails (per-company verified domain)
+- For prospecting: `WORKFLOW_EMAIL_TO` — recipients
+- For LinkedIn: `LINKEDIN_REVIEW_EMAIL_TO` — recipients (the broker
+  reads whichever the agent passes in the request body, not the env
+  directly)
 
-**`send-approval.mjs` (CSO, prospecting):**
-- `EMAIL_APPROVAL_PUBLIC_URL` — broker's public base URL, e.g.
-  `https://agents.octosync.dev/approvals`.
-- `EMAIL_APPROVAL_INTERNAL_TOKEN` — shared bearer token for the
-  broker's `POST /approvals/send` endpoint.
-- `PAPERCLIP_COMPANY_ID` — passed through to the broker.
-- `PAPERCLIP_OUTBOUND_EMAIL` — From: + Reply-To: for the outbound
-  email. Per-agent (multi-tenant deployments use different
-  verified domains per company).
-- `WORKFLOW_EMAIL_TO` — recipient list for the prospecting form.
-  Per-agent (who reviews differs by workflow and tenant).
+**Not** needed on the agent (server-side, broker only):
+`RESEND_API_KEY`, `EMAIL_APPROVAL_SIGNING_KEY`. Removing these from
+the agent's Paperclip-UI env is defense in depth — even if an agent
+improvised, it couldn't send through Resend or sign a valid form
+token.
 
-**`linkedin-finalize-batch.mjs` (CMO, LinkedIn — legacy path):**
-- `RESEND_API_KEY`
-- `EMAIL_APPROVAL_SIGNING_KEY`
-- `EMAIL_APPROVAL_PUBLIC_URL`
-- `PAPERCLIP_OUTBOUND_EMAIL`
-- `LINKEDIN_REVIEW_EMAIL_TO`
-- `PAPERCLIP_PUBLIC_URL` / `PAPERCLIP_COMPANY_ROUTE_KEY` (optional,
-  for `parentIssueUrl` derivation)
-- `PAPERCLIP_API_URL`, `PAPERCLIP_API_KEY`
+## Approval shapes per workflow
 
-These will collapse to the same `send-approval.mjs` env set once the
-LinkedIn workflow ships in the broker.
+The broker constructs the approval payloads at `/approvals/send`
+time; agents do not POST to `/api/companies/{id}/approvals`
+directly. The broker enforces this with a schema guard — if pre-
+existing approvals for the current emailRef are found with a
+non-broker payload shape, the broker refuses the request and lists
+the offending ids. The agent must post the blocker text verbatim
+and stop; a human cleans up before the next run.
+
+See `services/approval-broker/workflows/<name>.mjs` for the source
+of truth on each workflow's approval shape, email payload shape, and
+schema-guard rules.
+
+## Email + decide flow
+
+Both workflows now render emails with a single `<form method="GET"
+action=".../approvals/stage">` wrapping all items. The GET submission
+goes to the broker's same-origin staging page, which displays the
+selection in full detail (per-item, not just counts) and lets the
+user confirm via a same-origin `<form method="POST"
+action="/approvals/receive">`. This avoids Gmail's "submitting to an
+external page" warning that fires on cross-origin POSTs from email
+clients.
+
+- LinkedIn email → radio buttons (single_select). Submitting with no
+  selection = skip this week (all options get rejected on confirm).
+- Prospecting email → checkboxes (multi_select). Each checked
+  prospect approved, each unchecked rejected.
 
 ## References
 
-For niche detail loaded on demand:
-
-- `references/brand-shell.md` — the unified OctoSync header/palette/
-  footer used by both emails. Single source of truth for brand colors
-  and the compact 64px header layout.
-- `references/approval-button-card.md` — per-card layout (id chip,
-  title, body, rationale, sources, Approve/Reject buttons). Same
-  layout for both workflows.
-- `references/sidecar-protocol.md` — the `/approvals/confirm` and
-  `/approvals/act` contract the LinkedIn buttons hit. (Legacy
-  `/email-approval/*` paths are kept aliased for one release.) Token
-  shape, HMAC algorithm, TTL.
-- `references/approval-payload.md` — what goes into a Paperclip
-  approval's `payload` field per workflow (LinkedIn
-  `approve_ceo_strategy` / single-select, prospecting
-  `approve_prospect_outreach` / multi-select).
+- `references/brand-shell.md` — OctoSync header/palette/footer used by
+  the rendered emails
+- `references/approval-button-card.md` — per-card layout used by both
+  workflows
+- `references/sidecar-protocol.md` — broker contract (`/approvals/send`,
+  `/approvals/stage`, `/approvals/receive`, `/approvals/confirm`,
+  `/approvals/act`)
+- `references/approval-payload.md` — what the broker writes into each
+  approval's payload per workflow
