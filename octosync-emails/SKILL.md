@@ -45,10 +45,16 @@ helper:
 - `scripts/sign-approval-link.mjs` — HMAC-SHA256 token signer for the
   single-action `${baseUrl}/confirm?token=...` URLs used by the
   LinkedIn review email.
-- `scripts/sign-batch-link.mjs` — HMAC-SHA256 token signer for the
-  prospecting form. Kept for parity with the broker's
-  `services/approval-broker/token.mjs`; not used by `send-approval.mjs`
-  (the broker signs prospecting tokens itself now).
+
+The prospecting flow has **no skill-side code path** anymore. After
+multiple smokes (OCT-359, OCT-363, OCT-367) showed the CSO agent
+calling skill-side renderers / signers directly to bypass the broker
+(producing emails with the legacy `/decide` form action),
+`renderProspectingApprovalEmail`, `sendProspectingApprovalEmail`,
+and `sign-batch-link.mjs` were removed from this skill. The thin
+client (`send-approval.mjs`) is now the only path from agent to
+broker for prospecting; the broker is the only path from there to
+Resend.
 
 ## Email templates
 
