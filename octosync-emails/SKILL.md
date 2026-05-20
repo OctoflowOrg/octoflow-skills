@@ -2,11 +2,12 @@
 name: octosync-emails
 description: >
   Load when an OctoSync agent needs to send a workflow approval email
-  (LinkedIn review or weekly prospecting digest). Ships a thin POST
-  client that calls the approval-broker; the broker owns approval
-  creation, HTML rendering, Resend send, audit comment, and the
-  parent → in_review patch. Used by the CMO at LinkedIn step 7 and
-  the CSO at Opportunity step 12.
+  (LinkedIn review or weekly prospecting digest), or sync a decided
+  prospect into Attio. Ships thin POST clients that call the
+  approval-broker; the broker owns approval creation, HTML rendering,
+  Resend send, audit comment, parent → in_review patch, and the
+  Attio CRM upserts. Used by the CMO at LinkedIn step 7, the CSO at
+  Opportunity step 12, and the CSO at Opportunity step 13.
 ---
 
 # OctoSync approval emails — thin-client skill
@@ -17,12 +18,16 @@ comments, parent.status transitions) lives in the approval-broker
 sidecar at `services/approval-broker/`. This skill ships exactly
 one script — a HTTP client.
 
-## Script
+## Scripts
 
 - `scripts/send-approval.mjs` — workflow-agnostic thin POST client.
   Reads the agent's payload JSON, POSTs it to
   `${EMAIL_APPROVAL_PUBLIC_URL}/send` with bearer auth, prints the
   broker's response. ~50 lines.
+- `scripts/attio-sync.mjs` — Attio CRM sync thin client. Used by the
+  CSO post-decision (step 13). One call per decided prospecting
+  approval; broker upserts the prospect's Company + Person in Attio
+  and posts an audit comment on the parent. See "Attio sync" below.
 
 ## Invocation
 
@@ -95,6 +100,39 @@ clients.
   selection = skip this week (all options get rejected on confirm).
 - Prospecting email → checkboxes (multi_select). Each checked
   prospect approved, each unchecked rejected.
+
+## Attio sync (Phase 3a)
+
+After a prospecting approval is decided (approved or rejected), the
+CSO syncs the prospect into Attio via `scripts/attio-sync.mjs`. One
+invocation per prospect; broker upserts both the Company (by
+`domains`) and Person (by `email_addresses`) and posts an audit
+comment on the parent. The audit comment is the idempotency anchor —
+re-running for the same approvalId is a no-op once the comment
+exists.
+
+Invocation:
+
+```sh
+CLIENT=$(find / -name attio-sync.mjs \
+  -path "*octosync-emails*" 2>/dev/null | head -1)
+node "$CLIENT" --payload /tmp/attio-payload-<approvalId>.json
+```
+
+Payload JSON contains `parentId`, `approvalId`, `opportunityId`,
+`companyName`, `domain`, `person {email, name, role, isGenericInbox}`,
+`decision`, `decidedAt`. See the script header for the full schema.
+
+Reads the same env as `send-approval.mjs`
+(`EMAIL_APPROVAL_PUBLIC_URL`, `EMAIL_APPROVAL_INTERNAL_TOKEN`). The
+Attio access token is broker-side only (`ATTIO_ACCESS_TOKEN`) — the
+agent never sees it and never calls Attio directly. When the
+broker's token is unset, the route returns `503 attio integration
+disabled`; the agent should treat this as a blocker and stop.
+
+See `services/approval-broker/attio.mjs` for the orchestrator and
+`config/paperclip/skills/octosync-coordination-rules/references/attio-crm.md`
+for the Attio object/attribute reference.
 
 ## References
 
