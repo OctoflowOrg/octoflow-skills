@@ -32,8 +32,12 @@ one script — a HTTP client.
 ## Invocation
 
 ```sh
-CLIENT=$(find / -name send-approval.mjs \
-  -path "*octosync-emails*" 2>/dev/null | head -1)
+: "${OCTOSYNC_SKILLS_RUNTIME:?OCTOSYNC_SKILLS_RUNTIME not set; \
+  octosync-emails skill not provisioned for this agent — \
+  ask operator to set adapterConfig.env.OCTOSYNC_SKILLS_RUNTIME}"
+CLIENT=$(ls "$OCTOSYNC_SKILLS_RUNTIME"/octosync-emails--*/scripts/send-approval.mjs \
+  2>/dev/null | head -1)
+: "${CLIENT:?send-approval.mjs not present in octosync-emails skill runtime}"
 node "$CLIENT" \
   --workflow <prospecting|linkedin> \
   --parent-id "<parentIssueId>" \
@@ -42,6 +46,16 @@ node "$CLIENT" \
 ```
 
 Path-flag values are plain filesystem paths — **no `@` prefix**.
+
+`OCTOSYNC_SKILLS_RUNTIME` is the company-scoped skill runtime root
+(e.g. `/paperclip/instances/default/skills/<companyId>/__runtime__`)
+that the Paperclip operator sets in each agent's adapterConfig.env at
+agent registration time. The two `:?` guards above produce one-line,
+named blockers: env-var-unset (agent misconfigured) vs script-not-
+present (skill not mirrored or scripts missing). Don't fall back to
+`find / -name` — it walks the whole filesystem, returns empty for
+opaque reasons, and triggers same-blocker retry storms (the OCT-409
+class of bug).
 
 ## Exit semantics
 
@@ -58,12 +72,12 @@ comment on the parent and stops.
 - `EMAIL_APPROVAL_INTERNAL_TOKEN` — bearer token shared with the
   broker
 - `PAPERCLIP_COMPANY_ID` — passed through to the broker
-- `PAPERCLIP_OUTBOUND_EMAIL` — From: + Reply-To: for this agent's
+- `OCTOSYNC_OUTBOUND_EMAIL` — From: + Reply-To: for this agent's
   emails (per-company verified domain)
-- For prospecting: `WORKFLOW_EMAIL_TO` — recipients
-- For LinkedIn: `LINKEDIN_REVIEW_EMAIL_TO` — recipients (the broker
-  reads whichever the agent passes in the request body, not the env
-  directly)
+- `WORKFLOW_EMAIL_TO` — review-email recipient(s) for this agent's
+  workflow (LinkedIn for CMO, prospecting for CSO). Single address
+  or JSON-array string. The broker reads whichever value the agent
+  passes in the request body, not the env directly.
 
 **Not** needed on the agent (server-side, broker only):
 `RESEND_API_KEY`, `EMAIL_APPROVAL_SIGNING_KEY`. Removing these from
@@ -114,8 +128,11 @@ exists.
 Invocation:
 
 ```sh
-CLIENT=$(find / -name attio-sync.mjs \
-  -path "*octosync-emails*" 2>/dev/null | head -1)
+: "${OCTOSYNC_SKILLS_RUNTIME:?OCTOSYNC_SKILLS_RUNTIME not set; \
+  octosync-emails skill not provisioned for this agent}"
+CLIENT=$(ls "$OCTOSYNC_SKILLS_RUNTIME"/octosync-emails--*/scripts/attio-sync.mjs \
+  2>/dev/null | head -1)
+: "${CLIENT:?attio-sync.mjs not present in octosync-emails skill runtime}"
 node "$CLIENT" --payload /tmp/attio-payload-<approvalId>.json
 ```
 

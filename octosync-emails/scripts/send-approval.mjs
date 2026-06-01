@@ -107,7 +107,7 @@ async function main() {
   // don't have to compound `EMAIL_TO_<workflow>_<company>` env vars
   // in the broker's bundle). The broker uses whatever the request
   // body supplies.
-  const outboundEmail = requireEnv("PAPERCLIP_OUTBOUND_EMAIL");
+  const outboundEmail = requireEnv("OCTOSYNC_OUTBOUND_EMAIL");
   const recipientList = requireEnv("WORKFLOW_EMAIL_TO");
   const payload = await readPayload(payloadPath);
 
