@@ -180,6 +180,56 @@ left its issue at `in_progress` with no explicit continuation path —
 has not stopped cleanly. Re-enter the procedure at the appropriate
 step instead of stopping.
 
+## Self-wake detection
+
+When you post a comment on an issue, Paperclip fires
+`issue_commented` on the issue's assignee — which is you if you own
+the issue. That wake is a side effect of your own prior heartbeat,
+not a new event for you to act on. Apply these rules at the start of
+every heartbeat, before any procedure step:
+
+- **If `PAPERCLIP_WAKE_REASON` is `issue_commented` AND the latest
+  comment on the assigned issue was authored by you (the same agent
+  ID as your own) within the last 10 minutes, exit immediately with
+  zero comments and zero further work.** Your previous heartbeat
+  posted that comment; this wake is the echo. Do not re-evaluate the
+  procedure, do not post an acknowledgment, do not "verify" anything.
+- **Do not post comments about other recent comments on the parent.**
+  If the broker posted `<workflow> approval sent (resend=..., ref=...)`
+  or `Attio sync recorded approval=...`, that comment is the
+  authoritative record. Posting "The new comment is the broker's
+  audit trail..." or "Broker responded ok..." or any other
+  commentary about a comment you just saw is meta-narration —
+  forbidden under the "Do not narrate your own decision to stop"
+  rule the orchestrator-level AGENTS.md files enforce.
+
+This is the OCT-494 / OCT-495 failure pattern: orchestrator posts a
+comment → wakes on `issue_commented` from its own comment → posts a
+clarifying comment about the comment → wakes again. The loop only
+terminates when the agent stops finding something to say. Catching
+the self-wake at the top of the heartbeat short-circuits the loop.
+
+## Terminal-state exit
+
+If the assigned issue's status is already `done` or `cancelled` when
+your heartbeat starts, the workflow is complete. **Exit immediately
+with zero comments.** Specifically forbidden in this state:
+
+- Posting a "workflow complete" / "all done" / "all synced" summary.
+- Posting an updated tally even if the wording differs from a
+  previous summary (e.g., a terser "5 approved, 0 rejected" after
+  you've already posted "5 approved, 0 rejected, 0 expired. All
+  prospects synced to Attio.").
+- Re-running idempotent verification steps (re-listing approvals,
+  re-checking Attio sync state, re-reading worker handoffs) just to
+  confirm the terminal state.
+
+The terminal status itself IS the signal that the work is done. The
+parent already records the canonical summary your prior heartbeat
+posted; there is no second summary to post. This is the OCT-494
+post-approval failure pattern: a duplicate "5 approved, 0 rejected,
+0 expired" comment 3.5 minutes after the parent was already `done`.
+
 ## Branch hygiene
 
 - The currently assigned issue and wake context are authoritative.
