@@ -60,10 +60,18 @@ post on a worker's child; workers never post on the parent.
    (`POST /api/issues/{PAPERCLIP_TASK_ID}/comments`). The body is the
    full, self-contained handoff content. Do NOT prefix with `@CMO` or
    `@CSO`.
-3. Worker patches its own child to `done`
-   (`PATCH /api/issues/{PAPERCLIP_TASK_ID}` with `{ "status": "done" }`).
-4. Paperclip fires `issue_children_completed` on the orchestrator.
-   The orchestrator wakes, reads the just-completed child's last
+3. Worker sets the final disposition on its own child via
+   `PATCH /api/issues/{PAPERCLIP_TASK_ID}`. For leaf workers the
+   success-path disposition is `{ "status": "done" }`; if a worker hit
+   a blocker it cannot resolve, the disposition is
+   `{ "status": "blocked" }` with the named-owner `@CMO/@CSO Blocker:`
+   comment in step 2 (see the Blocker path below). See the canonical
+   paperclip skill's final-disposition checklist for the full set of
+   valid dispositions; workers should only ever exit with `done` or
+   `blocked`.
+4. Paperclip fires `issue_children_completed` on the orchestrator
+   (success path) or `issue_comment_mentioned` (blocker path). The
+   orchestrator wakes, reads the just-completed child's last
    comment, and continues the workflow.
 
 The success path uses NO `@AgentName` mention. The
@@ -126,17 +134,51 @@ parent-issue context.
 
 ## Stop cleanly
 
-"Stop cleanly" means:
+A heartbeat only ends cleanly when the issue you own has a **valid
+final disposition** recorded. Paperclip 2026.525.0 added a hard
+contract: a "successful" run that leaves its issue in an ambiguous
+state (e.g. `in_progress` with no explicit continuation path) triggers
+the `successful_run_missing_state` recovery and escalates to the
+recovery owner (in OctoSync, the CEO by fallback). Failure to honor
+this contract is the most common cause of recovery churn.
+
+The canonical paperclip skill at
+`/usr/local/lib/node_modules/paperclipai/node_modules/@paperclipai/server/skills/paperclip/SKILL.md`
+is the source of truth for the final-disposition checklist. Load it
+and follow it. Summary for OctoSync agents:
+
+- **Leaf workers** (LinkedIn Researcher, Drafter, Buffer Scheduler;
+  Opportunity Researcher, Strategist, Prospecting Researcher) only
+  ever exit with `done` (success) or `blocked` (with a
+  `@CMO/@CSO Blocker:` comment naming the unblock owner). Both
+  satisfy the contract.
+- **Orchestrators** (CMO, CSO) exit with:
+  - `in_progress` only when a child issue is running AND the parent's
+    `blockedByIssueIds` references that child. The blocker is the
+    explicit continuation path; without it, the parent looks stranded
+    to the recovery system.
+  - `in_review` when a human approval / review path is in flight
+    (the approval-broker patches this transition for the
+    LinkedIn/prospecting approval flows).
+  - `done` when all work is complete.
+  - `blocked` (with named owner) when continuation requires human
+    action that isn't an in-flight approval.
+
+Concretely, "stop cleanly" means:
 
 1. Post any blocker or progress comment the procedure mandates.
-2. Update issue statuses the procedure mandates.
+2. Set the disposition on the issue you own per the canonical
+   checklist. For orchestrators delegating to a child: PATCH the
+   parent's `blockedByIssueIds` to include the child id so the
+   continuation path is explicit.
 3. Emit no further plan, narrative, "next step," or "if you want"
    text.
 4. Return.
 
-A run that produced only a plan, narrative, or preamble has not
-stopped cleanly. Re-enter the procedure at the appropriate step
-instead of stopping.
+A run that produced only a plan, narrative, or preamble — or that
+left its issue at `in_progress` with no explicit continuation path —
+has not stopped cleanly. Re-enter the procedure at the appropriate
+step instead of stopping.
 
 ## Branch hygiene
 
