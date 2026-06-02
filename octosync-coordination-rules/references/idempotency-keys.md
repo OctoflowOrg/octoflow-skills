@@ -10,11 +10,11 @@ or random suffixes.
   post for one approved option):
   `<parentIssueId>:<optionId>:<approvalId>`
 - **LinkedIn review approvals** (one per option in the review batch,
-  created by `linkedin-finalize-batch.mjs`):
-  Constructed inside the helper. Agents do not author these directly.
+  created broker-side when the CMO calls `send-approval.mjs
+  --workflow linkedin`): agents do not author these directly.
 - **Prospect-outreach approvals** (one per researched prospect in
-  the weekly prospecting email, created by
-  `prospecting-approval-send.mjs`): matched on the tuple
+  the weekly prospecting email, created broker-side when the CSO calls
+  `send-approval.mjs --workflow prospecting`): matched on the tuple
   `(parentIssueId, opportunityId, prospectEmail)`. The helper looks
   up existing approvals on the parent and reuses them when the tuple
   matches, so a re-run is safe.

@@ -194,20 +194,28 @@ every heartbeat, before any procedure step:
   zero comments and zero further work.** Your previous heartbeat
   posted that comment; this wake is the echo. Do not re-evaluate the
   procedure, do not post an acknowledgment, do not "verify" anything.
-- **Do not post comments about other recent comments on the parent.**
-  If the broker posted `<workflow> approval sent (resend=..., ref=...)`
-  or `Attio sync recorded approval=...`, that comment is the
-  authoritative record. Posting "The new comment is the broker's
-  audit trail..." or "Broker responded ok..." or any other
-  commentary about a comment you just saw is meta-narration —
-  forbidden under the "Do not narrate your own decision to stop"
-  rule the orchestrator-level AGENTS.md files enforce.
+- **If `PAPERCLIP_WAKE_REASON` is `issue_commented` AND the latest
+  comment was authored by the approval-broker service user, exit
+  immediately with zero comments and zero further work** — exactly
+  like the self-echo above. Broker audit comments are recognizable by
+  their prefix: `LinkedIn review email sent`, `Weekly prospecting
+  approval sent`, or `Attio sync recorded approval=`. The broker has
+  already recorded the authoritative state AND patched the parent's
+  status, so there is nothing for this heartbeat to do. This positive
+  exit is the structural replacement for the per-agent "do not narrate
+  / do not comment about the broker's comment" prohibitions: the agent
+  exits before reaching the procedure, so there is no narration left to
+  forbid.
 
-This is the OCT-494 / OCT-495 failure pattern: orchestrator posts a
-comment → wakes on `issue_commented` from its own comment → posts a
-clarifying comment about the comment → wakes again. The loop only
-terminates when the agent stops finding something to say. Catching
-the self-wake at the top of the heartbeat short-circuits the loop.
+This is the OCT-494 / OCT-495 failure pattern: an `issue_commented`
+wake (from the orchestrator's own comment OR the broker's audit
+comment) → orchestrator wakes → posts a clarifying comment about the
+comment → wakes again. The loop only terminates when the agent stops
+finding something to say. Catching BOTH the self-echo and the
+broker-comment wake at the top of the heartbeat short-circuits the
+loop structurally — which is what lets the downstream per-agent
+narration prohibitions become belt-and-suspenders rather than
+load-bearing.
 
 ## Terminal-state exit
 
@@ -253,15 +261,33 @@ post-approval failure pattern: a duplicate "5 approved, 0 rejected,
   parent.
 - A normal Paperclip API call may be retried once if the operation is
   idempotent. After that, leave a blocker and stop.
+- **Same-blocker retry cap.** If you posted a blocker (`<workflow>
+  blocked: <reason>`, `Worker blocker on …`, etc.) on an issue in your
+  previous heartbeat AND no human comment has intervened, stop cleanly
+  with zero new comments — the existing blocker is the disposition.
+  Bound retries on the same `<reason>` substring to 2 per 30-minute
+  window. (OCT-409.)
+
+## Narration discipline
+
+When the procedure says to stop, stop with zero comments. Do not post
+comments that narrate your own decision to stop ("This is…", "Per
+procedure…", "Stopping cleanly because…", "The new comment is the
+broker's…", "Wake reason: …"), and do not post a comment explaining
+that you are choosing not to post a comment — that comment is itself
+the thing forbidden. Either you have one concrete observation to
+record (post it as one statement), or you stop silently. There is no
+third category. (OCT-495.) This rule is the single home for the
+stopping/narration discipline; agent prompts inherit it and must not
+restate it.
 
 ## References
 
 For niche detail loaded on demand:
 
 - `references/bundled-scripts.md` — invocation pattern for in-skill
-  scripts (relevant when the agent invokes a script from
-  `octosync-linkedin-publish`, `octosync-opportunity-digest`, or
-  `octosync-approval-emails`).
+  scripts (relevant when the agent invokes `send-approval.mjs` or
+  `attio-sync.mjs` from the `octosync-emails` skill).
 - `references/idempotency-keys.md` — deterministic construction of
   idempotency keys for approvals, emails, and publisher payloads.
 - `references/forbidden-tools.md` — tools/commands banned because

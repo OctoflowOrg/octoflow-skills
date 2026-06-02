@@ -6,7 +6,8 @@ orchestrator wakes on need to make decisions.
 
 ## LinkedIn — `approve_ceo_strategy`
 
-Created by `linkedin-finalize-batch.mjs` once per option in the
+Created by the approval-broker (via the `octosync-emails` skill's
+`send-approval.mjs --workflow linkedin`) once per option in the
 review batch (cap: 2 options). Single-select: the first approval to
 flip `approved` wins; subsequent approvals on the same parent are
 stale.
@@ -85,8 +86,8 @@ prospect was explicitly skipped this week.
 (See `octosync-coordination-rules/references/idempotency-keys.md`
 for the full list.)
 
-- LinkedIn approval idempotency: built inside
-  `linkedin-finalize-batch.mjs`; agents don't author the key
+- LinkedIn approval idempotency: built broker-side when the CMO calls
+  `send-approval.mjs --workflow linkedin`; agents don't author the key
   directly.
 - Prospecting approval idempotency: keyed on `(parentId,
   opportunityId, prospectEmail)` — the broker's

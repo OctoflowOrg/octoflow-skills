@@ -1,9 +1,9 @@
 # Invoking scripts from skills
 
 Some OctoSync skills ship executable scripts that an agent invokes
-during its procedure (the LinkedIn `linkedin-finalize-batch.mjs`, the
-opportunity `opportunity-digest.mjs`, the shared
-`render-approval-email.mjs` and `sign-approval-link.mjs`).
+during its procedure — the `octosync-emails` skill's
+`send-approval.mjs` (the LinkedIn review email and the weekly
+prospecting approval email) and `attio-sync.mjs` (CRM sync).
 
 When an agent is told to invoke a script from a skill, the script is
 available at the skill's mount path on disk. The exact path is
