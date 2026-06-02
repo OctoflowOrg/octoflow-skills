@@ -28,6 +28,13 @@ one script — a HTTP client.
   CSO post-decision (step 13). One call per decided prospecting
   approval; broker upserts the prospect's Company + Person in Attio
   and posts an audit comment on the parent. See "Attio sync" below.
+- `scripts/compute-schedule.mjs` — deterministic LinkedIn publish-time
+  helper. Used by the CMO at step 10 to produce `scheduledAt` instead
+  of doing date arithmetic in-prompt (LLM date math is unreliable; see
+  OCT-512). `node compute-schedule.mjs --decided-at <ISO8601 UTC>`
+  prints `decidedAt + 28 days @ noon America/Los_Angeles` (DST-aware)
+  as ISO UTC. Offset is a labeled constant (`OFFSET_DAYS`) plus an
+  optional `--offset-days` flag. Native Node, no deps.
 
 ## Invocation
 
