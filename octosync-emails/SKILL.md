@@ -155,7 +155,7 @@ broker's token is unset, the route returns `503 attio integration
 disabled`; the agent should treat this as a blocker and stop.
 
 See `services/approval-broker/attio.mjs` for the orchestrator and
-`config/paperclip/skills/octosync-coordination-rules/references/attio-crm.md`
+`companies/octosync/skills/octosync-coordination-rules/references/attio-crm.md`
 for the Attio object/attribute reference.
 
 ## References

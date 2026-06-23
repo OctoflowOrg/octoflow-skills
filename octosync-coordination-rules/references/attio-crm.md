@@ -104,5 +104,5 @@ off thanks to the audit-comment idempotency anchor.
 - `services/approval-broker/attio.mjs` — orchestrator (validation,
   idempotency, upsert sequencing, audit comment).
 - `services/approval-broker/attio-client.mjs` — REST wrapper.
-- `config/paperclip/skills/octosync-emails/scripts/attio-sync.mjs` —
+- `companies/octosync/skills/octosync-emails/scripts/attio-sync.mjs` —
   thin client the CSO invokes.
