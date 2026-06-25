@@ -30,6 +30,9 @@ Custom attributes (Paperclip-managed; one-time provision in Attio UI):
 
 Standard attributes used:
 - `email_addresses` (multi-value) — **matching attribute for upserts**
+- `phone_numbers` (multi-value) — the prospect's business/direct line,
+  required by the prospecting flow. Standard Attio attribute; **no
+  workspace provisioning needed** (unlike the `paperclip_*` customs).
 - `name`
 - `job_title`
 - `company` — record reference back to the Company, set as
@@ -42,7 +45,9 @@ Custom attributes (Paperclip-managed; one-time provision in Attio UI):
   produced this decision.
 - `paperclip_opportunity_id` — Text. Same id as on the Company.
 - `is_generic_inbox` — Checkbox. True when the prospect record is a
-  role-based inbox (info@, contact@) rather than an individual.
+  role-based inbox (info@, contact@) used as a fallback rather than an
+  individual. The prospecting flow now requires a phone but still allows
+  a flagged generic inbox when no named work email is found.
 
 ## Upsert semantics
 

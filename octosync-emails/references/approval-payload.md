@@ -57,6 +57,7 @@ return HTTP 400). The internal discriminator lives at
       "name": "<person name or null>",
       "role": "<role or generic-inbox label>",
       "email": "<contact email>",
+      "phone": "<business/direct line — required>",
       "isGenericInbox": false
     },
     "rationale": "<one-line why this prospect — derived from the opportunity's whyNow>",

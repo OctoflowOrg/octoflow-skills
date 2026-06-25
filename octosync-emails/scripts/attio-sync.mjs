@@ -24,6 +24,7 @@
 //       "email":         "jane@acme.test",
 //       "name":          "Jane Doe",           // optional for generic inboxes
 //       "role":          "Head of Ops",
+//       "phone":         "+1 503-555-0142",    // required; business/direct line
 //       "isGenericInbox": false
 //     },
 //     "decision":        "approved" | "rejected",

@@ -144,7 +144,7 @@ node "$CLIENT" --payload /tmp/attio-payload-<approvalId>.json
 ```
 
 Payload JSON contains `parentId`, `approvalId`, `opportunityId`,
-`companyName`, `domain`, `person {email, name, role, isGenericInbox}`,
+`companyName`, `domain`, `person {email, name, role, phone, isGenericInbox}`,
 `decision`, `decidedAt`. See the script header for the full schema.
 
 Reads the same env as `send-approval.mjs`
