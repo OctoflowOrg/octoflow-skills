@@ -21,6 +21,12 @@ Standard attributes used:
 - `name`
 
 Custom attributes (Paperclip-managed; one-time provision in Attio UI):
+- `business_phone` — Text (or Phone). The company's business main line
+  from Google Places. **Provision this** — standard Attio Companies
+  have no phone field.
+- `website` — Text (URL). The company website from Places. Provision if
+  you want it separate from `domains`; the broker only sets it when the
+  payload includes a website.
 - `paperclip_opportunity_id` — Text. Opportunity id from the weekly
   prospecting payload.
 - `paperclip_last_decision_at` — Timestamp. Updated on every sync,
@@ -28,13 +34,14 @@ Custom attributes (Paperclip-managed; one-time provision in Attio UI):
 
 ### People (`people`)
 
+Model: **Opportunity → Company → Contact**. The business phone is a
+Company main line, so it lives on the **Company**; the **Contact**
+(this People record) carries the person — name, role, email.
+
 Standard attributes used:
 - `email_addresses` (multi-value) — **matching attribute for upserts**
-- `phone_numbers` (multi-value) — the prospect's business/direct line,
-  required by the prospecting flow. Standard Attio attribute; **no
-  workspace provisioning needed** (unlike the `paperclip_*` customs).
 - `name`
-- `job_title`
+- `job_title` — the Contact's role
 - `company` — record reference back to the Company, set as
   `{target_object: "companies", target_record_id: <id>}`
 
@@ -44,10 +51,8 @@ Custom attributes (Paperclip-managed; one-time provision in Attio UI):
 - `paperclip_approval_id` — Text. The Paperclip approval id that
   produced this decision.
 - `paperclip_opportunity_id` — Text. Same id as on the Company.
-- `is_generic_inbox` — Checkbox. True when the prospect record is a
-  role-based inbox (info@, contact@) used as a fallback rather than an
-  individual. The prospecting flow now requires a phone but still allows
-  a flagged generic inbox when no named work email is found.
+- `is_generic_inbox` — Checkbox. True when the Contact is a role-based
+  inbox (info@, contact@) used as a fallback rather than an individual.
 
 ## Upsert semantics
 

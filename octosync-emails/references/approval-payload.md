@@ -52,20 +52,32 @@ return HTTP 400). The internal discriminator lives at
     "type": "approve_prospect_outreach",
     "emailRef": "prospecting-approval:<parentIssueId>",
     "opportunityId": "<rank>-<slug>",
-    "opportunityName": "<canonical company name>",
-    "prospect": {
+    "opportunityName": "<the Opportunity name — the automation/segment, NOT a company>",
+    "company": {
+      "name": "<company name>",
+      "domain": "<company domain>",
+      "website": "<company website url or null>",
+      "phone": "<business main line — required (Places)>"
+    },
+    "contact": {
       "name": "<person name or null>",
       "role": "<role or generic-inbox label>",
       "email": "<contact email>",
-      "phone": "<business/direct line — required>",
       "isGenericInbox": false
     },
-    "rationale": "<one-line why this prospect — derived from the opportunity's whyNow>",
+    "rationale": "<one-line why this Contact — derived from the Opportunity's whyNow>",
     "sourceDigestIssueId": "<parent issue id>",
     "selectionMode": "multi_select"
   }
 }
 ```
+
+**One approval per Contact.** The model is three levels —
+**Opportunity → Company → Contact**. The approvable unit (one
+checkbox) is a **Contact**; the **business phone lives on the
+Company** (it's a main line), and each Contact carries the person's
+name/role/email. `opportunityName` is the Opportunity (the automation
+in a segment), not a company name.
 
 `emailRef` is the trunk that ties every approval in one weekly email
 together. The broker's `/approvals/receive` endpoint walks the tree

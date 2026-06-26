@@ -18,13 +18,16 @@
 //     "parentId":        "OCT-XXX",
 //     "approvalId":      "appr-uuid",
 //     "opportunityId":   "1-acme",
-//     "companyName":     "Acme Corp",
-//     "domain":          "acme.test",          // optional; derived from email if absent
-//     "person": {
+//     "company": {
+//       "name":          "Acme Corp",
+//       "domain":        "acme.test",          // optional; derived from email if absent
+//       "website":       "https://acme.test",  // optional
+//       "phone":         "+1 503-555-0142"     // required; business main line
+//     },
+//     "contact": {
 //       "email":         "jane@acme.test",
 //       "name":          "Jane Doe",           // optional for generic inboxes
 //       "role":          "Head of Ops",
-//       "phone":         "+1 503-555-0142",    // required; business/direct line
 //       "isGenericInbox": false
 //     },
 //     "decision":        "approved" | "rejected",
