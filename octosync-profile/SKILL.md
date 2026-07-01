@@ -1,9 +1,9 @@
 ---
 name: octosync-profile
 description: >
-  ALWAYS load at the start of every heartbeat for content-producing
-  agents (Researcher, Drafter, Buffer Scheduler, Opportunity workers,
-  CMO, CSO). Canonical source of truth for what OctoSync sells, who
+  ALWAYS load at the start of every heartbeat for any agent producing or
+  grounding OctoSync content (outreach, targeting, scoping). Canonical
+  source of truth for what OctoSync sells, who
   we sell to, and what's out of scope: positioning paragraph (seeds
   outreach copy), ICP filter table, included industries, excluded
   industries, geographic focus. Treat as the yardstick for every
@@ -120,7 +120,7 @@ the in-person constraint is no longer load-bearing.
 
 ## Contact
 
-octosync.dev · hello@octosync.dev
+octosync.dev
 
 ## References
 

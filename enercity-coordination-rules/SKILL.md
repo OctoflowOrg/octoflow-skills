@@ -144,10 +144,9 @@ The canonical paperclip skill at
 is the source of truth for the final-disposition checklist. Load it
 and follow it. Summary for EnerCity Collaborative agents:
 
-- **Leaf workers** (Marketing Researcher, Social Post Drafter) only
-  ever exit with `done` (success) or `blocked` (with a
-  `@CMA Blocker:` comment naming the unblock owner). Both
-  satisfy the contract.
+- **Leaf workers** (non-orchestrator agents) only ever exit with
+  `done` (success) or `blocked` (with a `@CMA Blocker:` comment naming
+  the unblock owner). Both satisfy the contract.
 - **Orchestrator** (the CMA) exits with:
   - `in_progress` only when a child issue is running AND the parent's
     `blockedByIssueIds` references that child. The blocker is the
@@ -242,8 +241,10 @@ posted; there is no second summary to post.
 
 - Comments, briefs, and review packages: plain, factual,
   operator-grade. No marketing register.
-- Final LinkedIn post text (Drafter only): sharp technical operator
-  voice as specified in the Drafter prompt.
+- Final LinkedIn post text (Drafter only): warm, community-first ECC
+  brand voice per the `enercity-collaborative-voice` skill — that skill
+  is canonical for tone. (This is reader-facing published copy, and is
+  the one exception to the operator-grade register above.)
 
 ## Failure escalation
 

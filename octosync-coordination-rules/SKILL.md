@@ -147,11 +147,9 @@ The canonical paperclip skill at
 is the source of truth for the final-disposition checklist. Load it
 and follow it. Summary for OctoSync agents:
 
-- **Leaf workers** (LinkedIn Researcher, Drafter, Buffer Scheduler;
-  Opportunity Researcher, Strategist, Prospecting Researcher) only
-  ever exit with `done` (success) or `blocked` (with a
-  `@CMO/@CSO Blocker:` comment naming the unblock owner). Both
-  satisfy the contract.
+- **Leaf workers** (non-orchestrator agents) only ever exit with
+  `done` (success) or `blocked` (with a `@CMO/@CSO Blocker:` comment
+  naming the unblock owner). Both satisfy the contract.
 - **Orchestrators** (CMO, CSO) exit with:
   - `in_progress` only when a child issue is running AND the parent's
     `blockedByIssueIds` references that child. The blocker is the
