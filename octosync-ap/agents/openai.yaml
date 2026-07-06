@@ -1,0 +1,3 @@
+interface:
+  display_name: "OctoSync Accounts Payable"
+  short_description: "Invoice endpoints, GL coding chart, and anomaly rules"
