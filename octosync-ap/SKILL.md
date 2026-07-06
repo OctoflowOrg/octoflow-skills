@@ -146,64 +146,68 @@ verbatim on the issue you own and stop. Do not retry a 4xx.
 
 ## GL coding chart
 
-Every line item is coded to a general-ledger account. Match the vendor +
-line description to one account below; when a line is ambiguous, code to
-the closest account and **note the uncertainty in the handoff** for the
-human to confirm at approval — never guess silently.
+Every line item is coded to a general-ledger account. The `glAccount`
+value you assign is the **exact QuickBooks account name** from the table
+below — the broker resolves it to the QB account id at post time
+(case-insensitive), falling back to **Uncategorized Expense** if a name
+doesn't resolve. Match the vendor + line description to one account; when
+a line is ambiguous, code to the closest account and **note the
+uncertainty in the handoff** for the human to confirm at approval — never
+guess silently.
 
-First-pass chart of accounts for a software-services company
-(QuickBooks-style numbering). The distinction that matters for gross
-margin: **cost of revenue** (spend that directly delivers client work)
-vs. **operating expenses** (running the business).
+Reconciled to OctoSync's live QuickBooks chart (2026-07 — the QBO default
+chart, keyed by name; there are **no account numbers**). This is the
+curated subset a software-services company actually uses; the full QB
+chart has many accounts (home-office, vehicle, personal, mortgage) that AP
+invoices must not touch.
 
-### Cost of revenue (delivery)
-
-| Acct | GL account | Use for |
-|---|---|---|
-| 5010 | Subcontractors — delivery | 1099 dev/design/eng contractors building client deliverables |
-| 5020 | Software & hosting — delivery | cloud / infra / API spend that directly powers a client's delivered solution |
-
-### Operating expenses
-
-| Acct | GL account | Use for |
-|---|---|---|
-| 6010 | Software & SaaS subscriptions | internal tools — IDEs, productivity, CRM, design, analytics |
-| 6020 | Cloud infrastructure & hosting | internal / platform hosting, servers, domains, non-delivery cloud |
-| 6030 | Contractors & professional services | non-delivery: legal, accounting, bookkeeping, consultants, agencies |
-| 6040 | Advertising & marketing | ad spend, sponsorships, content, marketing tools |
-| 6050 | Payroll & wages | employee salaries and wages |
-| 6060 | Payroll taxes & benefits | employer taxes, health / benefits, retirement |
-| 6070 | Bank & merchant fees | payment processing, wire / ACH, platform / transaction fees |
-| 6080 | Office supplies & equipment | supplies, peripherals, small non-capital equipment |
-| 6090 | Computer hardware | laptops, monitors, devices (capitalize above the fixed-asset threshold) |
-| 6100 | Travel | flights, lodging, ground transport, mileage |
-| 6110 | Meals & entertainment | business / client meals (kept separate for the 50% deduction rule) |
-| 6120 | Telecom & internet | phone, internet, connectivity |
-| 6130 | Dues & subscriptions | memberships, professional orgs, publications |
-| 6140 | Training & education | courses, conferences, certifications |
-| 6150 | Insurance | general liability, E&O / professional, cyber |
-| 6160 | Taxes & licenses | business licenses, registrations, filing / franchise fees |
-| 6170 | Rent & facilities | office rent, coworking, facilities |
-| 6900 | Uncategorized / ask | catch-all — code here only when nothing fits, and flag for human review |
+| QuickBooks account (`glAccount`) | Use for |
+|---|---|
+| Apps and software | SaaS subscriptions, hosting, cloud / infra, APIs, developer tools |
+| Contract labor | 1099 contractors — dev / design / engineering |
+| Legal and professional services | lawyers, accountants, bookkeepers, consultants, agencies |
+| Advertising and Marketing | ad spend, sponsorships, content, marketing tools |
+| Subscriptions and memberships | professional memberships, dues, publications |
+| Commissions and fees | referral / affiliate / commission payments |
+| Transaction fees | payment processing, wire / ACH, platform / bank fees |
+| Office Expenses | office supplies, small non-capital items, general admin |
+| Materials and supplies | project / delivery materials and supplies |
+| Communications | phone, internet, connectivity |
+| Utilities (business property) | utilities for an office |
+| Property rents and leases | office rent, coworking, facilities |
+| Equipment rent and lease | equipment rental / lease |
+| Business licenses | licenses, registrations, filing / franchise fees |
+| Liability insurance | general liability, E&O / professional, cyber |
+| Continued education | courses, conferences, certifications, training |
+| Airfare | flights |
+| Lodging | hotels / lodging |
+| Other travel expenses | ground transport, rideshare, parking, other travel |
+| Meals with clients | business / client meals (kept separate for the 50% rule) |
+| Travel meals | meals while traveling |
+| Shipping fees | postage, shipping, courier |
+| Repairs and maintenance | repairs, maintenance |
+| Uncategorized Expense | fallback — code here only when nothing fits, and flag for human review |
 
 Coding guidance:
 
-- **Delivery vs. operating** — if the spend was incurred to deliver a
-  specific client engagement, code to the 50xx cost-of-revenue accounts;
-  otherwise it's an operating expense. This split drives gross margin, so
-  when unsure, flag it.
+- **Use the exact name** as `glAccount` (the broker matches on it). Don't
+  invent account names or numbers — this QuickBooks chart has none.
 - **Split mixed invoices** across accounts by line item rather than
   forcing the whole invoice into one account.
+- **Capital purchases (> ~$200).** QuickBooks has separate *Fixed Asset*
+  accounts for big-ticket items (e.g. "Computer (> $200)", "Apps and
+  software (> $200)"). AP does **not** auto-capitalize — for a single item
+  clearly over ~$200 that looks like equipment/hardware, code to the
+  nearest expense account and **flag it for the human** to capitalize if
+  appropriate.
+- **No cost-of-revenue split.** OctoSync's QB chart doesn't separate
+  delivery cost-of-revenue from operating expense, so don't try to — pick
+  the best-fit account above. (Adding COGS accounts for gross-margin
+  tracking is a future QB-side setup task.)
 - **Vendor defaults** speed repeat coding — once a vendor is confirmed
-  (e.g. a known SaaS tool → 6010), the wiki prior-vendor context carries
-  that default forward. Apply a known default, but still flag a
-  first-time vendor for human confirmation.
-
-The broker resolves account number/label → QuickBooks account id; keep
-these in sync with the broker's mapping table and reconcile the numbers to
-OctoSync's live QuickBooks chart of accounts when it's confirmed (the
-categories are a sound software-services default; only the exact
-numbers/names may shift).
+  (e.g. a known SaaS tool → Apps and software), the wiki prior-vendor
+  context carries that default forward. Apply a known default, but still
+  flag a first-time vendor for human confirmation.
 
 ## Anomaly rules
 
