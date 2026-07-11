@@ -63,18 +63,29 @@ broker-configured, not passed by the agent.
 
 **List mode** (intake, used by the CFA) — `{ "companyId": "<id>",
 "since": "<ISO8601 UTC, optional>", "maxResults": <int, optional> }`.
-Returns light metadata only: `{ "invoices": [ { "messageId",
-"receivedAt", "from", "subject", "vendorGuess", "amountGuess" } ] }` —
-enough to create one Invoice issue per message.
+Returns light metadata only: `{ "label": "<AP label>", "invoices": [
+{ "messageId", "receivedAt", "from", "subject", "vendorGuess" } ] }` —
+enough to create one Invoice issue per message. The Gmail label polled is
+broker-configured (`AP_INBOX_LABEL`), not passed by the agent.
 
 **Single mode** (used by the capture step) — `{ "companyId": "<id>",
 "messageId": "<id>" }`. Returns that one message's full content:
 `{ "messageId", "receivedAt", "from", "subject", "bodyText",
-"attachments": [ { "id", "filename", "mimeType", "textRef", "text" } ] }`.
-The capture step extracts canonical fields (vendor, invoice #, dates,
-amount, line items) from `bodyText` + attachment text. Keeping the
-content-heavy call here (not in the issue brief) is deliberate — the
-brief carries only the `sourceMessageId`.
+"attachments": [ { "filename", "mimeType", "size", "data" } ] }`, where
+`data` is the attachment **base64**. The capture step extracts canonical
+fields (vendor, invoice #, dates, amount, line items) from `bodyText` and
+the attachments. Invoices are usually **PDF attachments** — to read one,
+write it to a temp file and open it with the `Read` tool (Claude reads
+PDFs, including scanned ones, directly):
+
+```sh
+# from the capture agent, for a PDF attachment's base64 `data`:
+printf '%s' "<data>" | base64 -d > /tmp/invoice.pdf
+# then Read /tmp/invoice.pdf and extract the fields
+```
+
+Keeping the content-heavy call here (not in the issue brief) is
+deliberate — the brief carries only the `sourceMessageId`.
 
 ### `/invoice/ledger`
 
