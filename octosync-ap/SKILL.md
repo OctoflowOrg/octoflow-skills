@@ -31,14 +31,14 @@ scripts. Heavy lifting and all finance credentials live broker-side in
 - **Broker holds all finance creds** (Gmail read, QuickBooks read+write)
   and exposes three narrow AP endpoints. Agents call them over HTTP with
   the shared broker bearer token — the same auth `octosync-emails` uses.
-- **The capture step** reads new invoices via `/invoice/fetch`.
-- **The controls step** validates + codes using `/invoice/ledger` (live
-  QuickBooks prior-bill/vendor history) **and** the wiki prior-vendor
-  context (consulted first, via the Wiki Maintainer), then applies the
-  coding chart + anomaly rules below.
-- **The posting step** writes the approved, coded bill via
-  `/invoice/post` (QuickBooks Bill create). This is the only path that
-  reaches a QuickBooks **write**.
+- **The Invoice Reader** reads new invoices via `/invoice/fetch`.
+- **The Invoice Analyst** validates + codes using `/invoice/ledger` (live
+  QuickBooks prior-bill/vendor history — the authoritative prior-vendor
+  source), then applies the coding chart + anomaly rules below. (A wiki
+  prior-context source is deferred for v1.)
+- **The Bookkeeper** writes the approved, coded bill via `/invoice/post`
+  (QuickBooks Bill create). This is the only path that reaches a
+  QuickBooks **write**.
 - The **approval email** for each invoice is sent through the existing
   `octosync-emails` skill's `send-approval.mjs` with `--workflow
   ap-invoice` — it is **not** part of this skill. This skill covers only
@@ -47,14 +47,28 @@ scripts. Heavy lifting and all finance credentials live broker-side in
 ## Broker AP endpoints
 
 All three are `POST`, authenticated with the broker bearer token, on the
-broker base URL. They mirror the `octosync-emails` auth model — the same
-`EMAIL_APPROVAL_PUBLIC_URL` + `EMAIL_APPROVAL_INTERNAL_TOKEN`.
+**broker root** URL. They share the `octosync-emails` bearer token
+(`EMAIL_APPROVAL_INTERNAL_TOKEN`) but **not** the same base path.
+
+> **Path gotcha — read this before any call.** The invoice endpoints live
+> at the broker **root** (`/invoice/*`); the email-approval endpoints live
+> under `/approvals/*`. `EMAIL_APPROVAL_PUBLIC_URL` ends in `/approvals` by
+> convention, so you must **strip that suffix** to reach the invoice
+> routes — otherwise you call `/approvals/invoice/…`, which **404s**.
+> Always derive the root first, then call the root:
+>
+> ```sh
+> BROKER_ROOT="${EMAIL_APPROVAL_PUBLIC_URL%/}"; BROKER_ROOT="${BROKER_ROOT%/approvals}"
+> # then use "$BROKER_ROOT/invoice/fetch" | ".../invoice/ledger" | ".../invoice/post"
+> ```
+>
+> `${VAR%/approvals}` is a safe no-op if the suffix is already absent.
 
 | Endpoint | Access | Caller | Purpose |
 |---|---|---|---|
-| `/invoice/fetch` | Gmail read | capture | list new invoices from the AP inbox + configured labels/folders |
-| `/invoice/ledger` | QuickBooks read | controls | prior bills + vendor history for duplicate / bank-change / new-payee checks |
-| `/invoice/post` | QuickBooks **write** | bookkeeper | create the coded QuickBooks Bill (idempotent on invoice #) |
+| `/invoice/fetch` | Gmail read | Invoice Reader (single); CFA (list) | list new invoices from the AP inbox + configured labels/folders |
+| `/invoice/ledger` | QuickBooks read | Invoice Analyst | prior bills + vendor history for duplicate / bank-change / new-payee checks |
+| `/invoice/post` | QuickBooks **write** | Bookkeeper | create the coded QuickBooks Bill (idempotent on invoice #) |
 
 ### `/invoice/fetch`
 
@@ -68,18 +82,18 @@ Returns light metadata only: `{ "label": "<AP label>", "invoices": [
 enough to create one Invoice issue per message. The Gmail label polled is
 broker-configured (`AP_INBOX_LABEL`), not passed by the agent.
 
-**Single mode** (used by the capture step) — `{ "companyId": "<id>",
+**Single mode** (used by the Invoice Reader) — `{ "companyId": "<id>",
 "messageId": "<id>" }`. Returns that one message's full content:
 `{ "messageId", "receivedAt", "from", "subject", "bodyText",
 "attachments": [ { "filename", "mimeType", "size", "data" } ] }`, where
-`data` is the attachment **base64**. The capture step extracts canonical
+`data` is the attachment **base64**. The Invoice Reader extracts canonical
 fields (vendor, invoice #, dates, amount, line items) from `bodyText` and
 the attachments. Invoices are usually **PDF attachments** — to read one,
 write it to a temp file and open it with the `Read` tool (Claude reads
 PDFs, including scanned ones, directly):
 
 ```sh
-# from the capture agent, for a PDF attachment's base64 `data`:
+# from the Invoice Reader, for a PDF attachment's base64 `data`:
 printf '%s' "<data>" | base64 -d > /tmp/invoice.pdf
 # then Read /tmp/invoice.pdf and extract the fields
 ```
@@ -138,8 +152,11 @@ plain filesystem paths.
   broker base URL missing — ask operator to set adapterConfig.env}"
 : "${EMAIL_APPROVAL_INTERNAL_TOKEN:?EMAIL_APPROVAL_INTERNAL_TOKEN not set}"
 
-# e.g. post a coded bill (bookkeeper). Build /tmp/invoice-post.json first.
-curl -sS -X POST "$EMAIL_APPROVAL_PUBLIC_URL/invoice/post" \
+# Invoice routes are at the broker ROOT, not under /approvals — strip the suffix.
+BROKER_ROOT="${EMAIL_APPROVAL_PUBLIC_URL%/}"; BROKER_ROOT="${BROKER_ROOT%/approvals}"
+
+# e.g. post a coded bill (Bookkeeper). Build /tmp/invoice-post.json first.
+curl -sS -X POST "$BROKER_ROOT/invoice/post" \
   -H "Authorization: Bearer $EMAIL_APPROVAL_INTERNAL_TOKEN" \
   -H "Content-Type: application/json" \
   --data @/tmp/invoice-post.json
@@ -216,13 +233,13 @@ Coding guidance:
   the best-fit account above. (Adding COGS accounts for gross-margin
   tracking is a future QB-side setup task.)
 - **Vendor defaults** speed repeat coding — once a vendor is confirmed
-  (e.g. a known SaaS tool → Apps and software), the wiki prior-vendor
-  context carries that default forward. Apply a known default, but still
-  flag a first-time vendor for human confirmation.
+  (e.g. a known SaaS tool → Apps and software), the QB ledger history
+  carries that default forward. Apply a known default, but still flag a
+  first-time vendor for human confirmation.
 
 ## Anomaly rules
 
-The controls step raises a flag (it never blocks on its own — the human
+The Invoice Analyst raises a flag (it never blocks on its own — the human
 decides at approval) for any of the following. Each flag names the
 signal, the evidence, and the recommended disposition in the handoff.
 
@@ -234,9 +251,8 @@ signal, the evidence, and the recommended disposition in the handoff.
   This is the highest-priority fraud signal. Recommend: **verify out of
   band** with the vendor before approving; never approve on the strength
   of the invoice email alone.
-- **New payee** — vendor not present in `/invoice/ledger` and not in the
-  wiki prior-vendor context. Recommend: confirm the vendor is legitimate
-  and expected before first payment.
+- **New payee** — vendor not present in `/invoice/ledger`. Recommend:
+  confirm the vendor is legitimate and expected before first payment.
 - **Out-of-band amount** — amount materially above the vendor's historical
   range, or above an absolute review threshold. First-pass defaults: any
   single invoice **≥ $2,500**, or **> 2× the vendor's median prior bill**
@@ -244,26 +260,28 @@ signal, the evidence, and the recommended disposition in the handoff.
   expected. (Thresholds are tunable — reconcile to OctoSync's actual spend
   patterns.)
 
-Wiki prior-vendor context (via the Wiki Maintainer) is consulted **first**
-for every invoice — it can pre-empt a false "new payee" flag (vendor known
-in the wiki but not yet in QB) and carries human notes on known-good
-vendors.
+The QB ledger (`/invoice/ledger`) is the authoritative prior-vendor
+source for v1. (A wiki prior-context source — human notes on known-good
+vendors, able to pre-empt a false "new payee" flag for a vendor known to
+the team but not yet in QB — is deferred for v1.)
 
 ## Idempotency & audit
 
 - `/invoice/post` is idempotent on `invoiceNumber` per vendor — safe to
   retry; a duplicate returns the existing `billId`.
 - The invoice **issue thread** is the live audit trail; the decided
-  outcome (vendor, amount, coding, decision) is also folded into the
-  **wiki** via the Wiki Maintainer for durable audit and future prior-
-  vendor lookups.
-- Never write local files as workflow state; the issue + wiki are the
+  outcome (vendor, amount, coding, decision) lives there and, once posted,
+  in the QuickBooks Bill itself.
+- Never write local files as workflow state; the issue thread is the
   record.
 
 ## Required env (on the agent's container)
 
-- `EMAIL_APPROVAL_PUBLIC_URL` — broker public base URL (e.g.
-  `https://agents.octosync.dev/approvals`)
+- `EMAIL_APPROVAL_PUBLIC_URL` — broker public base URL, conventionally
+  ending in `/approvals` (e.g. `https://agents.octosync.dev/approvals`).
+  The invoice routes are at the **root**, so strip the suffix first
+  (`BROKER_ROOT="${EMAIL_APPROVAL_PUBLIC_URL%/approvals}"`) — see the Path
+  gotcha above.
 - `EMAIL_APPROVAL_INTERNAL_TOKEN` — broker bearer token
 - `PAPERCLIP_COMPANY_ID` — passed through to the broker
 
