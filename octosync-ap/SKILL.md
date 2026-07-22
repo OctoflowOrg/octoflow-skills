@@ -39,10 +39,12 @@ scripts. Heavy lifting and all finance credentials live broker-side in
 - **The Bookkeeper** writes the approved, coded bill via `/invoice/post`
   (QuickBooks Bill create). This is the only path that reaches a
   QuickBooks **write**.
-- The **approval email** for each invoice is sent through the existing
-  `octosync-emails` skill's `send-approval.mjs` with `--workflow
-  ap-invoice` — it is **not** part of this skill. This skill covers only
-  the invoice fetch/ledger/post endpoints and the coding/anomaly rules.
+- The **approval email** is sent through the existing `octosync-emails`
+  skill's `send-approval.mjs` with `--workflow ap-invoice` — **one email
+  covers the whole run** (one independent approval per invoice; approve the
+  checked, hold the unchecked). It is **not** part of this skill. This skill
+  covers only the invoice fetch/ledger/post endpoints and the coding/anomaly
+  rules.
 
 ## Broker AP endpoints
 
