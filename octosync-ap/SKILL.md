@@ -137,10 +137,19 @@ Request body — the coded bill:
 ```
 
 Response: `{ "billId": "<qb id>", "status": "created" | "duplicate",
-"qbUrl": "<link, optional>" }`. **Idempotent on `invoiceNumber` per
+"recordType": "expense" | "bill" }`. **Idempotent on `invoiceNumber` per
 vendor** — a repeat call returns `status: "duplicate"` with the existing
-`billId`, never a second Bill. The broker maps `glAccount` names to
-QuickBooks account ids server-side.
+id, never a second record. The broker maps `glAccount` names to QuickBooks
+account ids server-side.
+
+**Bill vs. paid Expense (broker-configured).** When the broker has a
+payment account configured (`QBO_PAYMENT_ACCOUNT`, e.g. the company card),
+`/invoice/post` records each invoice as a **paid Expense** (a QB Purchase
+charged to that account) — for auto-pay invoices that are already paid, so
+they never land in Accounts Payable or show past-due (`recordType:
+"expense"`, `dueDate` ignored). With no payment account configured it
+records an **open Bill** (`recordType: "bill"`) for a net-terms payable.
+Either way you send the same body above; the broker picks the mode.
 
 ## Invocation (direct, no shipped script)
 
