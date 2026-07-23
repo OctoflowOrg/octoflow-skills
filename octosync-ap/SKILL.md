@@ -80,9 +80,21 @@ broker-configured, not passed by the agent.
 **List mode** (intake, used by the CFA) — `{ "companyId": "<id>",
 "since": "<ISO8601 UTC, optional>", "maxResults": <int, optional> }`.
 Returns light metadata only: `{ "label": "<AP label>", "invoices": [
-{ "messageId", "receivedAt", "from", "subject", "vendorGuess" } ] }` —
-enough to create one Invoice issue per message. The Gmail label polled is
-broker-configured (`AP_INBOX_LABEL`), not passed by the agent.
+{ "messageId", "receivedAt", "from", "subject", "vendorGuess" } ],
+"dedupApplied": <bool>, "skipped": ["<messageId>", …] }`. The Gmail label
+polled is broker-configured (`AP_INBOX_LABEL`), not passed by the agent.
+
+**Dedup is done here, broker-side.** Pass `companyId` and the broker drops
+any message that already has an ap-invoice approval — every AP approval
+stores its `payload.invoice.sourceMessageId`, so the set of already-approved
+messageIds is the "already processed" record (no per-invoice issue, no
+dedup script, no Gmail write; approvals of any status — pending, approved,
+or rejected — count, so a held or rejected invoice never re-surfaces).
+`dedupApplied: true` confirms the check ran; `skipped` lists what it
+dropped. The returned `invoices` are the run's **new** batch — the CFA
+processes them as a data set, **not** one issue per invoice. (Without a
+`companyId` the broker fails open and returns everything; QB's
+vendor+invoice# idempotency still guards a double-post.)
 
 **Single mode** (used by the Invoice Reader) — `{ "companyId": "<id>",
 "messageId": "<id>" }`. Returns that one message's full content:
@@ -101,7 +113,8 @@ printf '%s' "<data>" | base64 -d > /tmp/invoice.pdf
 ```
 
 Keeping the content-heavy call here (not in the issue brief) is
-deliberate — the brief carries only the `sourceMessageId`.
+deliberate — the Reader's brief carries only each invoice's `index` +
+`sourceMessageId`, and it fetches the full content itself.
 
 ### `/invoice/ledger`
 
