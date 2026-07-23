@@ -36,9 +36,9 @@ scripts. Heavy lifting and all finance credentials live broker-side in
   QuickBooks prior-bill/vendor history — the authoritative prior-vendor
   source), then applies the coding chart + anomaly rules below. (A wiki
   prior-context source is deferred for v1.)
-- **The Bookkeeper** writes the approved, coded bill via `/invoice/post`
-  (QuickBooks Bill create). This is the only path that reaches a
-  QuickBooks **write**.
+- **The Bookkeeper** records every approved, coded invoice via
+  `/invoice/post` (a QuickBooks paid Expense or open Bill — see that
+  endpoint). This is the only path that reaches a QuickBooks **write**.
 - The **approval email** is sent through the existing `octosync-emails`
   skill's `send-approval.mjs` with `--workflow ap-invoice` — **one email
   covers the whole run** (one independent approval per invoice; approve the
@@ -293,11 +293,15 @@ the team but not yet in QB — is deferred for v1.)
 
 - `/invoice/post` is idempotent on `invoiceNumber` per vendor — safe to
   retry; a duplicate returns the existing `billId`.
-- The invoice **issue thread** is the live audit trail; the decided
-  outcome (vendor, amount, coding, decision) lives there and, once posted,
-  in the QuickBooks Bill itself.
-- Never write local files as workflow state; the issue thread is the
-  record.
+- **The audit trail is the approval + the QuickBooks entry**, not a
+  per-invoice issue. Each invoice's decided outcome (vendor, amount,
+  coding, decision) lives on its **approval** (the broker stores the coded
+  invoice on `payload.invoice`) and, once posted, in the **QuickBooks**
+  Expense/Bill itself. There are no per-invoice issues — invoices flow as
+  data through the worker handoffs; the AP intake parent carries only the
+  run-level audit summary.
+- Never write local files as workflow state; the approval and the QB entry
+  are the record.
 
 ## Required env (on the agent's container)
 
