@@ -30,7 +30,8 @@ function usage() {
       "  --parent-id <id> \\\n" +
       "  --agent-id <id> \\\n" +
       "  --payload <path-to-json> \\\n" +
-      "  [--company-id <id>]\n"
+      "  [--company-id <id>] \\\n" +
+      "  [--revision 2]\n"
   );
   process.exit(2);
 }
@@ -100,6 +101,11 @@ async function main() {
   const agentId = requireFlag(flags, "agent-id");
   const payloadPath = requireFlag(flags, "payload");
   const companyId = flags["company-id"] || requireEnv("PAPERCLIP_COMPANY_ID");
+  // Optional consistency assert for revision (v2) sends: the broker
+  // derives the version from payload.revision; the flag exists so the
+  // orchestrator's procedure text and the payload can't drift apart
+  // silently.
+  const revisionFlag = flags["revision"] ?? null;
 
   const publicUrl = requireEnv("EMAIL_APPROVAL_PUBLIC_URL").replace(/\/+$/, "");
   const token = requireEnv("EMAIL_APPROVAL_INTERNAL_TOKEN");
@@ -110,6 +116,21 @@ async function main() {
   const outboundEmail = requireEnv("OCTOSYNC_OUTBOUND_EMAIL");
   const recipientList = requireEnv("WORKFLOW_EMAIL_TO");
   const payload = await readPayload(payloadPath);
+  if (revisionFlag !== null) {
+    const flagVersion = Number(revisionFlag);
+    const payloadVersion = payload?.revision?.version ?? null;
+    if (flagVersion !== payloadVersion) {
+      blocker(
+        `--revision ${revisionFlag} does not match payload.revision.version ` +
+          `(${payloadVersion}); fix the review-package or the invocation`
+      );
+    }
+  } else if (payload?.revision) {
+    blocker(
+      "payload carries a revision block but --revision was not passed; " +
+        "invoke with --revision 2 for a revision send"
+    );
+  }
 
   const url = `${publicUrl}/send`;
   let response;
