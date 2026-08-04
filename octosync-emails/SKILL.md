@@ -49,10 +49,14 @@ node "$CLIENT" \
   --workflow <prospecting|linkedin> \
   --parent-id "<parentIssueId>" \
   --agent-id "$PAPERCLIP_AGENT_ID" \
-  --payload /tmp/<workflow>-payload.json
+  --payload /tmp/<workflow>-payload.json \
+  [--revision 2]
 ```
 
 Path-flag values are plain filesystem paths — **no `@` prefix**.
+`--revision 2` accompanies a review-package carrying a `revision`
+block (content-engine v2 sends after a client requests changes); the
+client asserts the flag and payload agree.
 
 `OCTOSYNC_SKILLS_RUNTIME` is the company-scoped skill runtime root
 (e.g. `/paperclip/instances/default/skills/<companyId>/__runtime__`)
