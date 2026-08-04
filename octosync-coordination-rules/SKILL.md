@@ -115,6 +115,17 @@ blocker sits silent until the next routine fires.
   (e.g. `Researcher started`, `LinkedIn review email sent`, `Weekly
   digest sent`, `Opportunity strategy started`) MUST omit the
   self-mention.
+- **Do not narrate a broker audit comment.** The broker writes on the
+  parent you own (`LinkedIn review email sent …`, `Weekly digest sent
+  …`, `AP invoice approval email sent …`), and that write wakes you via
+  `issue_commented`. Those comments are terminal audit records: the
+  outbound step already completed and no agent action is due until a
+  human decides. On such a wake, **stop cleanly without commenting**.
+  Posting "emails sent successfully" or "the latest comment is the
+  broker's audit record" adds no state, and each one is a paid run that
+  counts toward the productivity-review churn threshold (10 runs/hour).
+  Recognising the wake: the newest parent comment starts with a broker
+  audit prefix and was not written by you.
 
 ## Files and state
 
