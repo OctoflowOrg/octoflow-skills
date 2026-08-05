@@ -44,7 +44,7 @@ All take `Authorization: Bearer $EMAIL_APPROVAL_INTERNAL_TOKEN`.
 jq -n --slurpfile pkg /tmp/<workflow>-payload.json \
   --arg parentId "<parentIssueId>" --arg agentId "$PAPERCLIP_AGENT_ID" \
   --arg companyId "$PAPERCLIP_COMPANY_ID" \
-  --arg outboundEmail "$OCTOSYNC_OUTBOUND_EMAIL" \
+  --arg outboundEmail "$COMPANY_OUTBOUND_EMAIL" \
   --arg recipientList "$WORKFLOW_EMAIL_TO" \
   '{workflow:"<prospecting|linkedin|ap-invoice>", parentId:$parentId,
     agentId:$agentId, companyId:$companyId, outboundEmail:$outboundEmail,
@@ -82,7 +82,7 @@ broker is idempotent; a later run can retry.
 - `EMAIL_APPROVAL_INTERNAL_TOKEN` — bearer token shared with the
   broker
 - `PAPERCLIP_COMPANY_ID` — passed through to the broker
-- `OCTOSYNC_OUTBOUND_EMAIL` — From: + Reply-To: for this agent's
+- `COMPANY_OUTBOUND_EMAIL` — From: + Reply-To: for this agent's
   emails (per-company verified domain)
 - `WORKFLOW_EMAIL_TO` — review-email recipient(s) for this agent's
   workflow (LinkedIn for CMO, prospecting for CSO). Single address
