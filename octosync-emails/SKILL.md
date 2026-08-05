@@ -10,71 +10,70 @@ description: >
   Opportunity step 12, and the CSO at Opportunity step 13.
 ---
 
-# OctoSync approval emails — thin-client skill
+# OctoSync approval emails — broker HTTP contract
 
 The agent-side surface for the OctoSync approval-email flow. Heavy
 lifting (approval creation, React Email rendering, Resend, audit
 comments, parent.status transitions) lives in the approval-broker
-sidecar at `services/approval-broker/`. This skill ships exactly
-one script — a HTTP client.
+sidecar at `services/approval-broker/`.
 
-## Scripts
+**Agents reach the broker over HTTP. Never look for a script.** The
+`.mjs` files under `scripts/` are the reference implementation of
+these requests, kept for readability — they are NOT runnable from an
+agent run (see "There is no script to locate" below).
 
-- `scripts/send-approval.mjs` — workflow-agnostic thin POST client.
-  Reads the agent's payload JSON, POSTs it to
-  `${EMAIL_APPROVAL_PUBLIC_URL}/send` with bearer auth, prints the
-  broker's response. ~50 lines.
-- `scripts/attio-sync.mjs` — Attio CRM sync thin client. Used by the
-  CSO post-decision (step 13). One call per decided prospecting
-  approval; broker upserts the prospect's Company + Person in Attio
-  and posts an audit comment on the parent. See "Attio sync" below.
-- `scripts/compute-schedule.mjs` — deterministic LinkedIn publish-time
-  helper. Used by the CMO at step 10 to produce `scheduledAt` instead
-  of doing date arithmetic in-prompt (LLM date math is unreliable; see
-  OCT-512). `node compute-schedule.mjs --decided-at <ISO8601 UTC>`
-  prints `decidedAt + 28 days @ noon America/Los_Angeles` (DST-aware)
-  as ISO UTC. Offset is a labeled constant (`OFFSET_DAYS`) plus an
-  optional `--offset-days` flag. Native Node, no deps.
+## Endpoints
+
+- `POST /approvals/send` — create approvals, send the review email,
+  post the audit comment, patch parent → `in_review`. One call per
+  persona for content review. (Was `send-approval.mjs`.)
+- `POST /attio/sync-decision` — upsert a decided prospect's Company +
+  Person in Attio and post the audit comment. One call per prospect.
+  (Was `attio-sync.mjs`.)
+- `GET /approvals/content-engine/schedule?companyId=&personaId=&decidedAt=`
+  — deterministic publish time from the persona's cadence, DST-aware.
+  Replaces in-prompt date math (OCT-512) and `compute-schedule.mjs`.
+- `GET /approvals/content-engine/config?companyId=` — the persona and
+  channel roster.
+
+All take `Authorization: Bearer $EMAIL_APPROVAL_INTERNAL_TOKEN`.
 
 ## Invocation
 
 ```sh
-: "${OCTOSYNC_SKILLS_RUNTIME:?OCTOSYNC_SKILLS_RUNTIME not set; \
-  octosync-emails skill not provisioned for this agent — \
-  ask operator to set adapterConfig.env.OCTOSYNC_SKILLS_RUNTIME}"
-CLIENT=$(ls "$OCTOSYNC_SKILLS_RUNTIME"/octosync-emails--*/scripts/send-approval.mjs \
-  2>/dev/null | head -1)
-: "${CLIENT:?send-approval.mjs not present in octosync-emails skill runtime}"
-node "$CLIENT" \
-  --workflow <prospecting|linkedin> \
-  --parent-id "<parentIssueId>" \
-  --agent-id "$PAPERCLIP_AGENT_ID" \
-  --payload /tmp/<workflow>-payload.json \
-  [--revision 2]
+jq -n --slurpfile pkg /tmp/<workflow>-payload.json \
+  --arg parentId "<parentIssueId>" --arg agentId "$PAPERCLIP_AGENT_ID" \
+  --arg companyId "$PAPERCLIP_COMPANY_ID" \
+  --arg outboundEmail "$OCTOSYNC_OUTBOUND_EMAIL" \
+  --arg recipientList "$WORKFLOW_EMAIL_TO" \
+  '{workflow:"<prospecting|linkedin|ap-invoice>", parentId:$parentId,
+    agentId:$agentId, companyId:$companyId, outboundEmail:$outboundEmail,
+    recipientList:$recipientList, payload:$pkg[0]}' \
+| curl -fsS -X POST "${EMAIL_APPROVAL_PUBLIC_URL%/}/send" \
+    -H "Authorization: Bearer ${EMAIL_APPROVAL_INTERNAL_TOKEN}" \
+    -H "Content-Type: application/json" --data @-
 ```
 
-Path-flag values are plain filesystem paths — **no `@` prefix**.
-`--revision 2` accompanies a review-package carrying a `revision`
-block (content-engine v2 sends after a client requests changes); the
-client asserts the flag and payload agree.
+For a content-engine revision (v2) send, the `payload` carries its own
+`revision: { version: 2, mode: "seed"|"reroll", clientNotes }` block —
+the broker derives everything from it; there is no extra flag.
 
-`OCTOSYNC_SKILLS_RUNTIME` is the company-scoped skill runtime root
-(e.g. `/paperclip/instances/default/skills/<companyId>/__runtime__`)
-that the Paperclip operator sets in each agent's adapterConfig.env at
-agent registration time. The two `:?` guards above produce one-line,
-named blockers: env-var-unset (agent misconfigured) vs script-not-
-present (skill not mirrored or scripts missing). Don't fall back to
-`find / -name` — it walks the whole filesystem, returns empty for
-opaque reasons, and triggers same-blocker retry storms (the OCT-409
-class of bug).
+**There is no script to locate.** Skill script mounts are not
+reachable from an agent run — `local_path` skills are never
+materialized into `$OCTOSYNC_SKILLS_RUNTIME` (that directory holds only
+github/skills_sh skills), and searching with `find / -name` is
+forbidden (the OCT-409 retry-storm pattern). The HTTP endpoint above
+IS the interface; the `.mjs` files in this skill are kept only as the
+reference implementation of that request.
 
-## Exit semantics
+## Response semantics
 
-`0` on success (broker created approvals, sent email, posted audit
-comment on parent, patched parent → `in_review`). Non-zero on a
-blocker; client prints `BLOCKER: <reason>` to stderr (and stdout)
-with the broker's error text. Calling agent posts a short blocker
-comment on the parent and stops.
+**2xx** — the broker created approvals, sent the email, posted the
+audit comment on the parent, and patched parent → `in_review`. Stop
+cleanly; post nothing further.
+**Non-2xx** — the response body carries the broker's error text. Quote
+it verbatim in one short blocker comment on the parent and stop. The
+broker is idempotent; a later run can retry.
 
 ## Required env (on the agent's container)
 
@@ -129,7 +128,7 @@ clients.
 ## Attio sync (Phase 3a)
 
 After a prospecting approval is decided (approved or rejected), the
-CSO syncs the prospect into Attio via `scripts/attio-sync.mjs`. One
+CSO syncs the prospect into Attio via `POST /attio/sync-decision`. One
 invocation per prospect; broker upserts both the Company (by
 `domains`) and Person (by `email_addresses`) and posts an audit
 comment on the parent. The audit comment is the idempotency anchor —
@@ -139,12 +138,10 @@ exists.
 Invocation:
 
 ```sh
-: "${OCTOSYNC_SKILLS_RUNTIME:?OCTOSYNC_SKILLS_RUNTIME not set; \
-  octosync-emails skill not provisioned for this agent}"
-CLIENT=$(ls "$OCTOSYNC_SKILLS_RUNTIME"/octosync-emails--*/scripts/attio-sync.mjs \
-  2>/dev/null | head -1)
-: "${CLIENT:?attio-sync.mjs not present in octosync-emails skill runtime}"
-node "$CLIENT" --payload /tmp/attio-payload-<approvalId>.json
+curl -fsS -X POST "${EMAIL_APPROVAL_PUBLIC_URL%/}/../attio/sync-decision" \
+  -H "Authorization: Bearer ${EMAIL_APPROVAL_INTERNAL_TOKEN}" \
+  -H "Content-Type: application/json" \
+  --data @/tmp/attio-payload-<approvalId>.json
 ```
 
 Payload JSON contains `parentId`, `approvalId`, `opportunityId`,
@@ -153,8 +150,8 @@ Payload JSON contains `parentId`, `approvalId`, `opportunityId`,
 The business phone lives on the **Company**, the person on the
 **Contact**. See the script header for the full schema.
 
-Reads the same env as `send-approval.mjs`
-(`EMAIL_APPROVAL_PUBLIC_URL`, `EMAIL_APPROVAL_INTERNAL_TOKEN`). The
+Uses the same env (`EMAIL_APPROVAL_PUBLIC_URL`,
+`EMAIL_APPROVAL_INTERNAL_TOKEN`). The
 Attio access token is broker-side only (`ATTIO_ACCESS_TOKEN`) — the
 agent never sees it and never calls Attio directly. When the
 broker's token is unset, the route returns `503 attio integration
