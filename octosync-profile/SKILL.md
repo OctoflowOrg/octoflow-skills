@@ -127,9 +127,12 @@ octosync.dev
 For niche detail loaded on demand:
 
 - `references/delivery-tracks.md` — full Track 1 / Track 2 pricing
-  detail, support blocks, AI-compute conventions, Founding Partner
-  promo. Relevant when the Strategist picks which track to recommend
-  per opportunity, or the Drafter needs grounded pricing claims.
+  detail, the content-engine channel and voice ladder, support blocks,
+  compute conventions, Founding Partner promo, and the track-routing
+  rules. **Load it before writing any sentence that touches price,
+  compute, channels, or what a workflow costs.** Track 1 is all-in at
+  $600/month per managed workflow; metered compute exists on Track 2
+  only. Never itemize tokens or compute in customer-facing copy.
 - `references/example-routines.md` — recognizable workflow shapes
   from the Capabilities Deck (inbound lead triage, invoice
   processing, support ticket triage, weekly ops reporting, CRM
