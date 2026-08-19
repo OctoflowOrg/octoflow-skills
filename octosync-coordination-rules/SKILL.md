@@ -124,6 +124,11 @@ blocker sits silent until the next routine fires.
   Posting "emails sent successfully" or "the latest comment is the
   broker's audit record" adds no state, and each one is a paid run that
   counts toward the productivity-review churn threshold (10 runs/hour).
+  **Crucially, an explanation is not an exemption**: a comment saying
+  "this is a broker audit record, so I am stopping" is still a comment
+  on the parent you own, so it can wake you again — the loop it
+  describes is the loop it causes. "Stop cleanly without commenting"
+  means the run ends having posted nothing at all.
   Recognising the wake: the newest parent comment starts with a broker
   audit prefix and was not written by you.
 
