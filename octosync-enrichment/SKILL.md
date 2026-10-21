@@ -92,16 +92,70 @@ route a company to `Contact gap` rather than failing. A malformed call
   "emailConfidence": 94,
   "name": "Jane Doe",
   "role": "Head of Operations",
+  "alreadyInCrm": false,
+  "crmChecked": true,
+  "crmRecordId": null,
   "sources": ["google_places:searchText", "hunter:email-finder"],
   "missing": [],
   "notes": []
 }
 ```
 
-The Prospecting Researcher uses this to bucket the company:
+### `phoneSource` — always report it
 
-- `phone` present + a usable `email` → **Outbound-ready**.
-- `phone` missing (or no usable email) → **Contact gap**.
+The phone comes from a waterfall, and `phoneSource` names which step
+answered:
+
+| Value | Meaning |
+|-------|---------|
+| `google_places` | The licensed listing. Strongest. |
+| `company_website` | The number the company publishes on its own contact page. Also acceptable — it is their own published main line. |
+| `null` | No phone resolved. The company is a **Contact gap**. |
+
+Places is an **enhancement, not a requirement**: when its key is unset
+or the provider fails, the waterfall falls through to the company's own
+site and the call still succeeds. A phone found by *the agent's own* web
+research has no `phoneSource` and is **not** an acceptable substitute —
+carrying one into a handoff as if it were verified is the error, however
+plausible the number.
+
+### `crmChecked` — "not in the CRM" vs "never checked"
+
+`alreadyInCrm: false` on its own is **not** a clear CRM check. Read it
+together with `crmChecked`:
+
+| `crmChecked` | `alreadyInCrm` | Means |
+|---|---|---|
+| `true` | `false` | Verified: the company is not in Attio. Safe to pursue. |
+| `true` | `true` | Already in the pipeline. **Drop the company.** |
+| `false` | `false` | **Unknown** — Attio was never queried. Not safe to treat as new. |
+
+When `crmChecked` is `false`, `crm_check` also appears in `missing`.
+Call this endpoint for every company you intend to list — never carry a
+phone forward from prior context. Skipping the call skips this check.
+
+**`alreadyInCrm` is not the whole duplicate story.** It only goes `true`
+once an approval was decided and synced to the CRM. A company that was
+already **sent to a client** and then rejected, or left undecided, is
+absent from the CRM yet must still never be sent again — re-sending
+either clutters the client's CRM with duplicates or spends a digest slot
+on something they have already seen.
+
+That second exclusion lives in the orchestrator's prior-prospecting
+context, not in this skill's response: this endpoint answers "is it in
+the CRM", not "have we sent it". A consuming agent must check both, and
+drop on either.
+
+### Bucketing
+
+- `phone` present (with a `phoneSource`) + `crmChecked: true` +
+  `alreadyInCrm: false` + **not previously sent** (the orchestrator's
+  prior-prospecting context, which this skill cannot see) →
+  **Outbound-ready**.
+- `phone` present but `crmChecked: false`, or the phone has no
+  `phoneSource` → **Needs verification**, stating which.
+- `phone` missing → **Contact gap**.
+- `alreadyInCrm: true` → drop entirely.
 - `emailType === "generic"` → keep only as a flagged fallback (set
   `isGenericInbox` in the handoff); prefer a `personal` email when one
   exists.
