@@ -2,63 +2,67 @@
 name: octosync-enrichment
 description: >
   Load when an OctoSync agent needs verified contact data for a target
-  company — a business phone and a named work email. Ships one thin POST
-  client (enrich-contact.mjs) that calls the approval-broker's
-  /enrich/contact endpoint; the broker holds the Google Places + Hunter
-  keys and does the lookups. Used by the Opportunity Prospecting
-  Researcher at step 6 to gate prospects into Outbound-ready vs Contact
-  gap.
+  company — a business phone and a named work email. Calls the
+  approval-broker's /enrich/contact endpoint over HTTP; the broker holds
+  the provider keys and does the lookups, and also answers whether the
+  company is already in the CRM. Used by any agent gating prospects into
+  Outbound-ready vs Needs verification vs Contact gap.
 ---
 
-# OctoSync contact enrichment — thin-client skill
+# OctoSync contact enrichment — broker HTTP contract
 
-The agent-side surface for resolving contact details from **licensed,
-free-tier APIs** instead of guessing them from search results. The
-Prospecting Researcher must require a business phone and prefer a named
-work email; this skill is the only sanctioned source of that data.
+The agent-side surface for resolving contact details from **licensed
+sources and the company's own published pages**, instead of guessing them
+from search results. Requiring a business phone and preferring a named
+work email is the point; this skill is the only sanctioned source of that
+data.
 
-Like the `octosync-emails` skill, the heavy lifting and the secrets live
-in the **approval-broker** sidecar (`services/approval-broker/`). This
-skill ships exactly one HTTP client. The broker calls two providers,
-both agent-callable on their free tiers:
+Heavy lifting and the secrets live in the **approval-broker** sidecar
+(`services/approval-broker/`). The broker resolves a phone from a
+waterfall and an email from a licensed provider, and answers the CRM
+dedup question on the same call.
 
-- **Google Places** → the company's business phone + website for its
-  Oregon location. Phone is business-facing by definition (no personal
-  cells).
-- **Hunter.io** → a named work email for the domain, each classified
-  `personal` vs `generic` with a deliverability check. This is what
-  enforces "prefer a named work email, avoid generalized inboxes."
+**Agents reach the broker over HTTP. Never look for a script.** The
+`.mjs` file under `scripts/` is the reference implementation of this
+request, kept for readability — it is NOT runnable from an agent run
+(see "There is no script to locate" below).
 
-**The Google Places + Hunter keys never reach this agent** — they live
-in the broker's secrets bundle (`GOOGLE_PLACES_API_KEY`,
-`HUNTER_API_KEY`). The agent only carries the broker bearer token, same
-trust model as `send-approval.mjs` / `attio-sync.mjs`.
+**No provider key ever reaches the agent.** They live in the broker's
+secrets bundle. The agent carries only the broker bearer token, the same
+trust model as the `octosync-emails` endpoints.
 
-## Scripts
+## Endpoint
 
-- `scripts/enrich-contact.mjs` — thin POST client for the broker's
-  `/enrich/contact`. Node built-ins only (global `fetch`); no deps.
+`POST /enrich/contact` — resolve one company's phone, published email and
+CRM status. One call per candidate company. (Was `enrich-contact.mjs`.)
 
-## Invocation
+```http
+POST {EMAIL_APPROVAL_PUBLIC_URL}/enrich/contact
+Authorization: Bearer {EMAIL_APPROVAL_INTERNAL_TOKEN}
+Content-Type: application/json
 
-```sh
-: "${OCTOSYNC_SKILLS_RUNTIME:?OCTOSYNC_SKILLS_RUNTIME not set; \
-  octosync-enrichment skill not provisioned for this agent}"
-CLIENT=$(ls "$OCTOSYNC_SKILLS_RUNTIME"/octosync-enrichment--*/scripts/enrich-contact.mjs \
-  2>/dev/null | head -1)
-: "${CLIENT:?enrich-contact.mjs not present in octosync-enrichment skill runtime}"
-node "$CLIENT" --company-name "Acme Logistics" --region "Oregon" \
-  [--domain "acme.com"] [--person-name "Jane Doe"]
+{
+  "companyName": "Acme Logistics",
+  "region": "Oregon",
+  "domain": "acme.com",
+  "personName": "Jane Doe"
+}
 ```
 
-Flags:
+| Field | Required | Purpose |
+|-------|----------|---------|
+| `companyName` | yes | Search subject |
+| `region` | no | Biases the lookup (pass `"Oregon"`) |
+| `domain` | no | Email-lookup domain; derived from the resolved website when omitted. **Pass it when you know it** — it is also what lets CRM dedup match on domain rather than falling back to a weaker name match. |
+| `personName` | no | When set, the email finder targets that person |
 
-| Flag | Required | Purpose |
-|------|----------|---------|
-| `--company-name` | yes | Place search query subject |
-| `--region` | no | Biases the Places search (pass `"Oregon"`) |
-| `--domain` | no | Hunter lookup domain; derived from the Places website when omitted |
-| `--person-name` | no | When set, Hunter Email Finder targets that person |
+**There is no script to locate.** Skill script mounts are not reachable
+from an agent run — `local_path` skills are never materialized into
+`$OCTOSYNC_SKILLS_RUNTIME` (that directory holds only github/skills_sh
+skills), and searching with `find / -name` is forbidden (the OCT-409
+retry-storm pattern). The HTTP endpoint above IS the interface; the
+`.mjs` file in this skill is kept only as the reference implementation of
+that request.
 
 ## Env (agent side)
 
@@ -67,14 +71,17 @@ Flags:
 | `EMAIL_APPROVAL_PUBLIC_URL` | yes | Broker base URL; `/enrich/contact` is hit on the same host |
 | `EMAIL_APPROVAL_INTERNAL_TOKEN` | yes | Bearer token shared with the broker |
 
-The provider keys (`GOOGLE_PLACES_API_KEY`, `HUNTER_API_KEY`) are
-**broker env, not agent env**. Each provider degrades independently
+`OCTOSYNC_SKILLS_RUNTIME` is **not** needed by this skill any more — it
+was only there to locate the script.
+
+The provider keys are **broker env, not agent env**. Each provider degrades independently
 broker-side: if a key is unset or a provider errors, that provider's
 fields come back `null` with a note in `notes` and the field listed in
 `missing`, and the call still returns `200`. This lets you bring
 enrichment up incrementally (e.g. Places-only first) and lets the agent
 route a company to `Contact gap` rather than failing. A malformed call
-(missing `--company-name`) exits `2` with a `BLOCKER:` line.
+(missing `companyName`) returns a non-2xx with a blocker message — quote
+it verbatim in your `@`-blocker rather than paraphrasing.
 
 ## Output (stdout, JSON — the broker's response)
 
@@ -162,8 +169,10 @@ drop on either.
 
 ## Free-tier notes
 
-- Google Places business phone is the cleanest free, ToS-safe phone
-  source for local Oregon SMBs (most have a Google Business Profile).
+- The phone waterfall tries Google Places first when its key is live,
+  then the company's own published contact page, which is free and needs
+  no account. Places was a hard dependency until an expired GCP free
+  trial took it offline for 38 days (ENG-27); it is now an enhancement.
 - Hunter free tier is ~25 searches + 50 verifications/month — enough for
   a 5–15 company weekly run. A broker-side cache could stretch it
   further. Upgrade only when weekly volume outgrows it.
@@ -172,6 +181,7 @@ drop on either.
 
 ## Broker side
 
-- `services/approval-broker/enrich.mjs` — Places + Hunter orchestrator.
+- `services/approval-broker/enrich.mjs` — phone waterfall, email lookup,
+  CRM dedup.
 - `POST /enrich/contact` in `services/approval-broker/index.mjs` — bearer
   auth (same token as the other outbound routes), holds the provider keys.
