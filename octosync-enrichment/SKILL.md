@@ -126,6 +126,24 @@ research has no `phoneSource` and is **not** an acceptable substitute —
 carrying one into a handoff as if it were verified is the error, however
 plausible the number.
 
+### `region` picks between a company's several numbers
+
+Pass `region`. A company with offices in more than one state publishes a
+number for each, and the first one on the page is usually head office.
+With `region` set, the reader ranks the published numbers and returns one
+in that region when the company has one.
+
+When it has none, you still get the number it does publish, plus a note:
+
+```
+phone's area code is outside Oregon; the company publishes no Oregon number
+```
+
+Report that in your handoff. The number is real and dialable, but the
+reader is calling another state's office. A toll-free main line is never
+flagged this way — an 800 number says nothing about location, so it is
+treated as neutral rather than out-of-region.
+
 ### `crmChecked` — "not in the CRM" vs "never checked"
 
 `alreadyInCrm: false` on its own is **not** a clear CRM check. Read it
